@@ -1776,13 +1776,28 @@ export class GameSystem extends createSystem({
 
 		// Trail
 		const trail = new Group();
+		const trailColors: Record<ShotType, number> = {
+			standard: 0x00ffcc, curve: 0xffaa00, power: 0xff4444,
+			split: 0xcc44ff, phantom: 0x44ccff, multi: 0xff8800,
+		};
+		const trailColor = trailColors[type] || color;
 		for (let i = 0; i < 5; i++) {
 			const tGeo = new SphereGeometry(radius * (1 - i * 0.15), 6, 4);
 			const tMat = new MeshBasicMaterial({
-				color, transparent: true, opacity: 0.3 - i * 0.05,
+				color: trailColor, transparent: true, opacity: 0.3 - i * 0.05,
 			});
 			const tMesh = new Mesh(tGeo, tMat);
 			trail.add(tMesh);
+		}
+		// R6: Curve shot gets extra spiral trail markers
+		if (type === 'curve') {
+			for (let i = 0; i < 3; i++) {
+				const sGeo = new SphereGeometry(radius * 0.4, 4, 3);
+				const sMat = new MeshBasicMaterial({
+					color: 0xffdd44, transparent: true, opacity: 0.15,
+				});
+				trail.add(new Mesh(sGeo, sMat));
+			}
 		}
 		this.scene.add(trail);
 
@@ -2050,6 +2065,18 @@ export class GameSystem extends createSystem({
 		if (this.combo >= 5) this.unlockAchievement(2);
 		if (this.combo >= 10) this.unlockAchievement(3);
 		if (this.combo >= 20) this.unlockAchievement(4);
+
+		// R6: Combo milestone celebrations
+		if (this.combo === 5 || this.combo === 10 || this.combo === 15 || this.combo === 20) {
+			const milestoneColor = this.combo >= 20 ? 0xff2200 : this.combo >= 15 ? 0xffaa00 : this.combo >= 10 ? 0x00ff44 : 0x00ccff;
+			this.triggerFlash(milestoneColor, 0.2, 0.3);
+			playSfx('achieve');
+			if (this.hudDoc) {
+				const milestoneText = this.combo + 'x STREAK!';
+				this.setTxt(this.hudDoc, 'status', milestoneText);
+				this.wavePreviewTimer = 1.5;
+			}
+		}
 		if (this.totalCatches >= 10) this.unlockAchievement(5);
 		if (this.totalCatches >= 50) this.unlockAchievement(6);
 		if (shot.type === 'phantom') this.unlockAchievement(15);
@@ -2946,11 +2973,23 @@ export class GameSystem extends createSystem({
 			const trailChildren = s.trail.children as Mesh[];
 			for (let t = 0; t < trailChildren.length; t++) {
 				const tc = trailChildren[t];
+				const trailDt = (t + 1) * 2;
 				tc.position.set(
-					s.pos.x - s.vel.x * dt * (t + 1) * 2,
-					s.pos.y - s.vel.y * dt * (t + 1) * 2,
-					s.pos.z - s.vel.z * dt * (t + 1) * 2,
+					s.pos.x - s.vel.x * dt * trailDt,
+					s.pos.y - s.vel.y * dt * trailDt,
+					s.pos.z - s.vel.z * dt * trailDt,
 				);
+				// R6: Curve trail spiral offset
+				if (s.type === 'curve' && t < 5) {
+					const spiralAngle = _time * 8 + t * 1.2;
+					tc.position.x += Math.sin(spiralAngle) * 0.08 * (t + 1);
+					tc.position.y += Math.cos(spiralAngle) * 0.08 * (t + 1);
+				}
+				// R6: Phantom trail flicker
+				if (s.type === 'phantom' && !s.visible) {
+					const fMat = tc.material as MeshBasicMaterial;
+					fMat.opacity = Math.random() * 0.1;
+				}
 			}
 
 			// Check collision with gloves
@@ -3043,6 +3082,16 @@ export class GameSystem extends createSystem({
 		const pulse = 0.6 + Math.sin(_time * 4) * 0.2;
 		(this.gauntletL.material as MeshStandardMaterial).emissiveIntensity = pulse;
 		(this.gauntletR.material as MeshStandardMaterial).emissiveIntensity = pulse;
+
+		// R6: Power shot visual pulse (glow bigger when close)
+		for (const s of this.shots) {
+			if (!s.alive || s.type !== 'power') continue;
+			const mat = s.mesh.material as MeshStandardMaterial;
+			const proximity = Math.max(0, 1 - Math.abs(s.pos.z - GOAL_Z) / 15);
+			mat.emissiveIntensity = 1.0 + proximity * 1.5 + Math.sin(_time * 10) * 0.3;
+			const scale = 1.0 + proximity * 0.3;
+			s.mesh.scale.set(scale, scale, scale);
+		}
 	}
 
 	// ── R2: Orbit spheres animation ──
