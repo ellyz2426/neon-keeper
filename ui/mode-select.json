@@ -1,0 +1,554 @@
+{
+  "element": {
+    "sourceTag": "container",
+    "type": "custom",
+    "children": [
+      {
+        "sourceTag": "text",
+        "type": "custom",
+        "children": [
+          "SELECT MODE"
+        ],
+        "properties": {
+          "fontsize": "28",
+          "color": "#00ffcc",
+          "fontweight": "bold"
+        },
+        "dataUid": "uid-2"
+      },
+      {
+        "sourceTag": "container",
+        "type": "custom",
+        "children": [
+          {
+            "sourceTag": "container",
+            "type": "custom",
+            "children": [
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "ARCADE"
+                ],
+                "properties": {
+                  "name": "arcade-title",
+                  "fontsize": "16",
+                  "color": "#00ffcc",
+                  "fontweight": "bold"
+                },
+                "dataUid": "uid-5"
+              },
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "Endless waves - 3 lives - climb the leaderboard"
+                ],
+                "properties": {
+                  "fontsize": "10",
+                  "color": "#558899"
+                },
+                "dataUid": "uid-6"
+              }
+            ],
+            "properties": {
+              "name": "btn-arcade",
+              "flexdirection": "column",
+              "padding": "8",
+              "backgroundcolor": "#001a2a",
+              "bordercolor": "#00ffcc",
+              "borderwidth": "1",
+              "borderradius": "8",
+              "cursor": "pointer",
+              "gap": "2"
+            },
+            "dataUid": "uid-4"
+          },
+          {
+            "sourceTag": "container",
+            "type": "custom",
+            "children": [
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "CHALLENGE"
+                ],
+                "properties": {
+                  "name": "challenge-title",
+                  "fontsize": "16",
+                  "color": "#ffaa00",
+                  "fontweight": "bold"
+                },
+                "dataUid": "uid-8"
+              },
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "10 preset patterns - no mistakes allowed"
+                ],
+                "properties": {
+                  "name": "challenge-desc",
+                  "fontsize": "10",
+                  "color": "#887744"
+                },
+                "dataUid": "uid-9"
+              }
+            ],
+            "properties": {
+              "name": "btn-challenge",
+              "flexdirection": "column",
+              "padding": "8",
+              "backgroundcolor": "#1a1200",
+              "bordercolor": "#ffaa00",
+              "borderwidth": "1",
+              "borderradius": "8",
+              "cursor": "pointer",
+              "gap": "2"
+            },
+            "dataUid": "uid-7"
+          },
+          {
+            "sourceTag": "container",
+            "type": "custom",
+            "children": [
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "TRAINING"
+                ],
+                "properties": {
+                  "name": "training-title",
+                  "fontsize": "16",
+                  "color": "#44cc44",
+                  "fontweight": "bold"
+                },
+                "dataUid": "uid-11"
+              },
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "Slow speed - practice your reflexes"
+                ],
+                "properties": {
+                  "fontsize": "10",
+                  "color": "#448844"
+                },
+                "dataUid": "uid-12"
+              }
+            ],
+            "properties": {
+              "name": "btn-training",
+              "flexdirection": "column",
+              "padding": "8",
+              "backgroundcolor": "#0a1a0a",
+              "bordercolor": "#44cc44",
+              "borderwidth": "1",
+              "borderradius": "8",
+              "cursor": "pointer",
+              "gap": "2"
+            },
+            "dataUid": "uid-10"
+          },
+          {
+            "sourceTag": "container",
+            "type": "custom",
+            "children": [
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "TIME ATTACK"
+                ],
+                "properties": {
+                  "name": "timeattack-title",
+                  "fontsize": "16",
+                  "color": "#cc44ff",
+                  "fontweight": "bold"
+                },
+                "dataUid": "uid-14"
+              },
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "60 seconds - save as many as you can"
+                ],
+                "properties": {
+                  "fontsize": "10",
+                  "color": "#885599"
+                },
+                "dataUid": "uid-15"
+              }
+            ],
+            "properties": {
+              "name": "btn-timeattack",
+              "flexdirection": "column",
+              "padding": "8",
+              "backgroundcolor": "#1a0020",
+              "bordercolor": "#cc44ff",
+              "borderwidth": "1",
+              "borderradius": "8",
+              "cursor": "pointer",
+              "gap": "2"
+            },
+            "dataUid": "uid-13"
+          },
+          {
+            "sourceTag": "container",
+            "type": "custom",
+            "children": [
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "ENDLESS"
+                ],
+                "properties": {
+                  "name": "endless-title",
+                  "fontsize": "16",
+                  "color": "#ff6600",
+                  "fontweight": "bold"
+                },
+                "dataUid": "uid-17"
+              },
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "No wave breaks - difficulty never stops climbing"
+                ],
+                "properties": {
+                  "name": "endless-desc",
+                  "fontsize": "10",
+                  "color": "#886644"
+                },
+                "dataUid": "uid-18"
+              }
+            ],
+            "properties": {
+              "name": "btn-endless",
+              "flexdirection": "column",
+              "padding": "8",
+              "backgroundcolor": "#1a0800",
+              "bordercolor": "#ff6600",
+              "borderwidth": "1",
+              "borderradius": "8",
+              "cursor": "pointer",
+              "gap": "2"
+            },
+            "dataUid": "uid-16"
+          },
+          {
+            "sourceTag": "container",
+            "type": "custom",
+            "children": [
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "DAILY CHALLENGE"
+                ],
+                "properties": {
+                  "name": "daily-title",
+                  "fontsize": "16",
+                  "color": "#ff8800",
+                  "fontweight": "bold"
+                },
+                "dataUid": "uid-20"
+              },
+              {
+                "sourceTag": "text",
+                "type": "custom",
+                "children": [
+                  "Today's unique challenge - beat your best!"
+                ],
+                "properties": {
+                  "name": "daily-desc",
+                  "fontsize": "10",
+                  "color": "#886644"
+                },
+                "dataUid": "uid-21"
+              }
+            ],
+            "properties": {
+              "name": "btn-daily",
+              "flexdirection": "column",
+              "padding": "8",
+              "backgroundcolor": "#1a0f00",
+              "bordercolor": "#ff8800",
+              "borderwidth": "1",
+              "borderradius": "8",
+              "cursor": "pointer",
+              "gap": "2"
+            },
+            "dataUid": "uid-19"
+          }
+        ],
+        "properties": {
+          "flexdirection": "column",
+          "gap": "5",
+          "margintop": "8",
+          "width": "340"
+        },
+        "dataUid": "uid-3"
+      },
+      {
+        "sourceTag": "text",
+        "type": "custom",
+        "children": [
+          "< BACK"
+        ],
+        "properties": {
+          "name": "btn-back",
+          "fontsize": "14",
+          "color": "#446688",
+          "margintop": "6",
+          "cursor": "pointer",
+          "padding": "6"
+        },
+        "dataUid": "uid-22"
+      }
+    ],
+    "properties": {
+      "flexdirection": "column",
+      "alignitems": "center",
+      "justifycontent": "center",
+      "gap": "8",
+      "padding": "18",
+      "backgroundcolor": "#000a15ee",
+      "borderradius": "14",
+      "bordercolor": "#00ccff",
+      "borderwidth": "2",
+      "width": "440",
+      "height": "700"
+    },
+    "dataUid": "uid-1"
+  },
+  "classes": {},
+  "ranges": {
+    "uid-1": {
+      "start": {
+        "line": 0,
+        "column": 0
+      },
+      "end": {
+        "line": 115,
+        "column": 12
+      }
+    },
+    "uid-2": {
+      "start": {
+        "line": 13,
+        "column": 2
+      },
+      "end": {
+        "line": 13,
+        "column": 74
+      }
+    },
+    "uid-3": {
+      "start": {
+        "line": 15,
+        "column": 2
+      },
+      "end": {
+        "line": 105,
+        "column": 14
+      }
+    },
+    "uid-4": {
+      "start": {
+        "line": 16,
+        "column": 4
+      },
+      "end": {
+        "line": 29,
+        "column": 16
+      }
+    },
+    "uid-5": {
+      "start": {
+        "line": 27,
+        "column": 6
+      },
+      "end": {
+        "line": 27,
+        "column": 93
+      }
+    },
+    "uid-6": {
+      "start": {
+        "line": 28,
+        "column": 6
+      },
+      "end": {
+        "line": 28,
+        "column": 96
+      }
+    },
+    "uid-7": {
+      "start": {
+        "line": 31,
+        "column": 4
+      },
+      "end": {
+        "line": 44,
+        "column": 16
+      }
+    },
+    "uid-8": {
+      "start": {
+        "line": 42,
+        "column": 6
+      },
+      "end": {
+        "line": 42,
+        "column": 99
+      }
+    },
+    "uid-9": {
+      "start": {
+        "line": 43,
+        "column": 6
+      },
+      "end": {
+        "line": 43,
+        "column": 111
+      }
+    },
+    "uid-10": {
+      "start": {
+        "line": 46,
+        "column": 4
+      },
+      "end": {
+        "line": 59,
+        "column": 16
+      }
+    },
+    "uid-11": {
+      "start": {
+        "line": 57,
+        "column": 6
+      },
+      "end": {
+        "line": 57,
+        "column": 97
+      }
+    },
+    "uid-12": {
+      "start": {
+        "line": 58,
+        "column": 6
+      },
+      "end": {
+        "line": 58,
+        "column": 84
+      }
+    },
+    "uid-13": {
+      "start": {
+        "line": 61,
+        "column": 4
+      },
+      "end": {
+        "line": 74,
+        "column": 16
+      }
+    },
+    "uid-14": {
+      "start": {
+        "line": 72,
+        "column": 6
+      },
+      "end": {
+        "line": 72,
+        "column": 102
+      }
+    },
+    "uid-15": {
+      "start": {
+        "line": 73,
+        "column": 6
+      },
+      "end": {
+        "line": 73,
+        "column": 85
+      }
+    },
+    "uid-16": {
+      "start": {
+        "line": 76,
+        "column": 4
+      },
+      "end": {
+        "line": 89,
+        "column": 16
+      }
+    },
+    "uid-17": {
+      "start": {
+        "line": 87,
+        "column": 6
+      },
+      "end": {
+        "line": 87,
+        "column": 95
+      }
+    },
+    "uid-18": {
+      "start": {
+        "line": 88,
+        "column": 6
+      },
+      "end": {
+        "line": 88,
+        "column": 117
+      }
+    },
+    "uid-19": {
+      "start": {
+        "line": 91,
+        "column": 4
+      },
+      "end": {
+        "line": 104,
+        "column": 16
+      }
+    },
+    "uid-20": {
+      "start": {
+        "line": 102,
+        "column": 6
+      },
+      "end": {
+        "line": 102,
+        "column": 101
+      }
+    },
+    "uid-21": {
+      "start": {
+        "line": 103,
+        "column": 6
+      },
+      "end": {
+        "line": 103,
+        "column": 109
+      }
+    },
+    "uid-22": {
+      "start": {
+        "line": 107,
+        "column": 2
+      },
+      "end": {
+        "line": 114,
+        "column": 19
+      }
+    }
+  }
+}
