@@ -827,17 +827,6 @@ export class GameSystem extends createSystem({
 	// ── R8: Leaderboard tab ──
 	lbActiveTabR8: string = 'arcade';
 
-	// ── R9: Achievement notification banner ──
-	achvBannerMesh: Mesh | null = null;
-	achvBannerTimer = 0;
-	achvBannerQueue: string[] = [];
-
-	// ── R9: Atmosphere particles ──
-	atmosParticles: { mesh: Mesh; vel: Vector3; life: number; maxLife: number }[] = [];
-	atmosSpawnTimer = 0;
-
-	// ── R9: Near-miss spark effect ──
-	nearMissSparks: { mesh: Mesh; vel: Vector3; life: number }[] = [];
 
 	// ── R9: Reaction time tracking ──
 	lastShotSpawnTime = 0;
@@ -3497,12 +3486,6 @@ export class GameSystem extends createSystem({
 			this.updateDemoShots(Math.min(delta, 0.05));
 		}
 
-		// R9: Achievement banner always updates (even outside playing state)
-		this.updateAchvBanner(Math.min(delta, 0.05));
-
-		// R9: Atmosphere particles always drift
-		this.updateAtmosParticles(Math.min(delta, 0.05));
-
 		if (this.state !== 'playing') return;
 
 		// R9: Apply post-goal slowdown multiplier
@@ -3587,12 +3570,6 @@ export class GameSystem extends createSystem({
 
 		// R6: Shockwaves
 		this.updateShockwaves(dt);
-
-		// R9: Near-miss sparks update
-		this.updateNearMissSparks(dt);
-
-		// R9: Spawn atmosphere particles periodically
-		this.maybeSpawnAtmosParticle();
 
 		// R8: Countdown ring for Time Attack
 		this.updateCountdownRing(_time);
@@ -4591,176 +4568,5 @@ export class GameSystem extends createSystem({
 			this.scene.remove(ds.trail);
 		}
 		this.demoShots = [];
-	}
-
-	// ── R9: Achievement notification banner ──
-	buildAchvBanner() {
-		const canvas = document.createElement('canvas');
-		canvas.width = 512;
-		canvas.height = 64;
-		const ctx2d = canvas.getContext('2d')!;
-		ctx2d.fillStyle = '#000a15';
-		ctx2d.fillRect(0, 0, 512, 64);
-		ctx2d.fillStyle = '#ffcc00';
-		ctx2d.font = 'bold 24px sans-serif';
-		ctx2d.textAlign = 'center';
-		ctx2d.fillText('ACHIEVEMENT UNLOCKED', 256, 28);
-
-		const tex = new CanvasTexture(canvas);
-		const geo = new BoxGeometry(1.8, 0.24, 0.01);
-		const mat = new MeshBasicMaterial({
-			map: tex, transparent: true, opacity: 0,
-		});
-		this.achvBannerMesh = new Mesh(geo, mat);
-		this.achvBannerMesh.position.set(0, 2.8, -1.5);
-		this.achvBannerMesh.visible = false;
-		this.scene.add(this.achvBannerMesh);
-	}
-
-	showAchvBanner(name: string) {
-		if (!this.achvBannerMesh) return;
-		const canvas = document.createElement('canvas');
-		canvas.width = 512;
-		canvas.height = 64;
-		const ctx2d = canvas.getContext('2d')!;
-		ctx2d.fillStyle = '#0a0a18';
-		ctx2d.fillRect(0, 0, 512, 64);
-		ctx2d.strokeStyle = '#ffcc00';
-		ctx2d.lineWidth = 3;
-		ctx2d.strokeRect(2, 2, 508, 60);
-		ctx2d.fillStyle = '#ffcc00';
-		ctx2d.font = 'bold 18px sans-serif';
-		ctx2d.textAlign = 'center';
-		ctx2d.fillText('ACHIEVEMENT UNLOCKED', 256, 25);
-		ctx2d.fillStyle = '#ffeecc';
-		ctx2d.font = '16px sans-serif';
-		ctx2d.fillText(name, 256, 50);
-
-		const tex = new CanvasTexture(canvas);
-		(this.achvBannerMesh.material as MeshBasicMaterial).map = tex;
-		(this.achvBannerMesh.material as MeshBasicMaterial).opacity = 1.0;
-		(this.achvBannerMesh.material as MeshBasicMaterial).needsUpdate = true;
-		this.achvBannerMesh.visible = true;
-		this.achvBannerMesh.position.y = 2.8;
-		this.achvBannerTimer = 3.0;
-	}
-
-	updateAchvBanner(dt: number) {
-		if (this.achvBannerTimer <= 0 && this.achvBannerQueue.length > 0) {
-			const name = this.achvBannerQueue.shift()!;
-			this.showAchvBanner(name);
-		}
-		if (this.achvBannerTimer > 0 && this.achvBannerMesh) {
-			this.achvBannerTimer -= dt;
-			if (this.achvBannerTimer <= 0) {
-				this.achvBannerMesh.visible = false;
-				(this.achvBannerMesh.material as MeshBasicMaterial).opacity = 0;
-			} else if (this.achvBannerTimer < 0.5) {
-				(this.achvBannerMesh.material as MeshBasicMaterial).opacity = this.achvBannerTimer / 0.5;
-			} else if (this.achvBannerTimer > 2.5) {
-				(this.achvBannerMesh.material as MeshBasicMaterial).opacity = (3.0 - this.achvBannerTimer) / 0.5;
-			}
-			this.achvBannerMesh.position.y += dt * 0.05;
-		}
-	}
-
-	// ── R9: Atmosphere particles (per-skin embers/sparks) ──
-	maybeSpawnAtmosParticle() {
-		this.atmosSpawnTimer -= 0.016;
-		if (this.atmosSpawnTimer > 0) return;
-		this.atmosSpawnTimer = 0.15 + Math.random() * 0.1;
-		if (this.atmosParticles.length > 30) return;
-
-		const skinColors: Record<string, number[]> = {
-			'Neon Classic': [0x00ffcc, 0x00ccff, 0xcc44ff],
-			'Cyber Red': [0xff4444, 0xff6644, 0xff2222],
-			'Ocean Deep': [0x22ccaa, 0x00aacc, 0x44ddcc],
-			'Void': [0x8844ff, 0x6622dd, 0xaa66ff],
-		};
-		const colors = skinColors[this.arenaSkin] || skinColors['Neon Classic'];
-		const color = colors[Math.floor(Math.random() * colors.length)];
-
-		const geo = new SphereGeometry(0.02 + Math.random() * 0.02, 3, 3);
-		const mat = new MeshBasicMaterial({
-			color, transparent: true, opacity: 0.4 + Math.random() * 0.3,
-		});
-		const mesh = new Mesh(geo, mat);
-		mesh.position.set(
-			(Math.random() - 0.5) * 14,
-			5 + Math.random() * 2,
-			-3 - Math.random() * 20,
-		);
-		this.scene.add(mesh);
-
-		this.atmosParticles.push({
-			mesh,
-			vel: new Vector3(
-				(Math.random() - 0.5) * 0.3,
-				-0.3 - Math.random() * 0.2,
-				(Math.random() - 0.5) * 0.2,
-			),
-			life: 4 + Math.random() * 3,
-			maxLife: 4 + Math.random() * 3,
-		});
-	}
-
-	updateAtmosParticles(dt: number) {
-		for (let i = this.atmosParticles.length - 1; i >= 0; i--) {
-			const p = this.atmosParticles[i];
-			p.life -= dt;
-			if (p.life <= 0 || p.mesh.position.y < -1) {
-				this.scene.remove(p.mesh);
-				this.atmosParticles.splice(i, 1);
-				continue;
-			}
-			p.mesh.position.x += p.vel.x * dt;
-			p.mesh.position.y += p.vel.y * dt;
-			p.mesh.position.z += p.vel.z * dt;
-			p.mesh.position.x += Math.sin(p.life * 2) * 0.01;
-			const frac = p.life / p.maxLife;
-			(p.mesh.material as MeshBasicMaterial).opacity = frac * 0.5;
-		}
-	}
-
-	// ── R9: Near-miss sparks ──
-	spawnNearMissSparks(pos: Vector3) {
-		for (let i = 0; i < 8; i++) {
-			const geo = new BoxGeometry(0.03, 0.03, 0.03);
-			const mat = new MeshBasicMaterial({
-				color: 0xffaa00, transparent: true, opacity: 0.9,
-			});
-			const mesh = new Mesh(geo, mat);
-			mesh.position.copy(pos);
-			this.scene.add(mesh);
-			this.nearMissSparks.push({
-				mesh,
-				vel: new Vector3(
-					(Math.random() - 0.5) * 5,
-					Math.random() * 4,
-					(Math.random() - 0.5) * 5,
-				),
-				life: 0.4 + Math.random() * 0.3,
-			});
-		}
-		playSfx('click');
-	}
-
-	updateNearMissSparks(dt: number) {
-		for (let i = this.nearMissSparks.length - 1; i >= 0; i--) {
-			const s = this.nearMissSparks[i];
-			s.life -= dt;
-			if (s.life <= 0) {
-				this.scene.remove(s.mesh);
-				this.nearMissSparks.splice(i, 1);
-				continue;
-			}
-			s.mesh.position.x += s.vel.x * dt;
-			s.mesh.position.y += s.vel.y * dt;
-			s.vel.y -= 9 * dt;
-			s.mesh.position.z += s.vel.z * dt;
-			(s.mesh.material as MeshBasicMaterial).opacity = s.life * 1.5;
-			s.mesh.rotation.x += dt * 10;
-			s.mesh.rotation.y += dt * 8;
-		}
 	}
 }
