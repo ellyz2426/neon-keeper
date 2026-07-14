@@ -17,6 +17,17 @@ type GameState = 'menu' | 'mode_select' | 'playing' | 'wave_complete' | 'game_ov
 type GameMode = 'arcade' | 'challenge' | 'training' | 'timeattack';
 type ShotType = 'standard' | 'curve' | 'power' | 'split' | 'phantom' | 'multi';
 type Difficulty = 'easy' | 'normal' | 'hard';
+type PowerUpType = 'shield_expand' | 'slow_mo' | 'double_points' | 'magnet';
+type WaveModifier = 'normal' | 'fast_shots' | 'giant_balls' | 'tiny_goal' | 'mirror' | 'fog_thick';
+type TrainingShotOption = ShotType | 'all';
+
+interface PowerUp {
+	mesh: Mesh;
+	type: PowerUpType;
+	pos: Vector3;
+	alive: boolean;
+	timer: number;
+}
 
 interface Shot {
 	mesh: Mesh;
@@ -158,6 +169,22 @@ function playSfx(type: string, vol = 0.3) {
 			o.frequency.setValueAtTime(900, ctx.currentTime + 0.1);
 			g.gain.setValueAtTime(vol * 0.5, ctx.currentTime);
 			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+		} else if (type === 'powerup') {
+			// Ascending arpeggio for power-up collect
+			o.type = 'sine';
+			o.frequency.setValueAtTime(440, ctx.currentTime);
+			o.frequency.setValueAtTime(660, ctx.currentTime + 0.06);
+			o.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
+			o.frequency.setValueAtTime(1320, ctx.currentTime + 0.18);
+			g.gain.setValueAtTime(vol * 0.6, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+		} else if (type === 'dive') {
+			// Quick whoosh for dive
+			o.type = 'sawtooth';
+			o.frequency.setValueAtTime(200, ctx.currentTime);
+			o.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.08);
+			g.gain.setValueAtTime(vol * 0.3, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
 		} else {
 			o.type = 'sine';
 			o.frequency.setValueAtTime(440, ctx.currentTime);
@@ -490,6 +517,40 @@ export class GameSystem extends createSystem({
 	netRippleTimer = 0;
 	netRippleActive = false;
 
+	// ── R4: Power-up system ──
+	powerUps: PowerUp[] = [];
+	activePowerUp: PowerUpType | null = null;
+	powerUpTimer = 0;
+	powerUpSpawnedThisWave = false;
+
+	// ── R4: Dive mechanic (browser mode) ──
+	isDiving = false;
+	diveTimer = 0;
+	diveCooldown = 0;
+	diveDirection = new Vector3();
+	diveOriginL = new Vector3();
+	diveOriginR = new Vector3();
+	diveTargetL = new Vector3();
+	diveTargetR = new Vector3();
+	divePhase: 'lunge' | 'recover' = 'lunge';
+
+	// ── R4: Wave modifiers ──
+	currentModifier: WaveModifier = 'normal';
+	modifierDisplayTimer = 0;
+	originalGoalWidth = GOAL_WIDTH;
+
+	// ── R4: Dynamic Difficulty Adjustment ──
+	ddaMultiplier = 1.0;
+	recentResults: boolean[] = [];
+
+	// ── R4: Training shot selector ──
+	trainingShotType: TrainingShotOption = 'all';
+
+	// ── R4: Combo visual rings ──
+	comboRingL!: Mesh;
+	comboRingR!: Mesh;
+	comboRingFlashTimer = 0;
+
 	// ── Save data ──
 	saveData!: SaveData;
 
@@ -696,6 +757,20 @@ export class GameSystem extends createSystem({
 		this.shieldR.rotation.x = Math.PI / 2;
 		this.shieldR.position.set(0, 0, -0.1);
 		this.gauntletR.add(this.shieldR);
+
+		// R4: Combo visual rings
+		const comboRingGeo = new CylinderGeometry(0.3, 0.3, 0.015, 24, 1, true);
+		const comboRingMatL = new MeshBasicMaterial({
+			color: 0x00ccff, transparent: true, opacity: 0.0, side: 2,
+		});
+		this.comboRingL = new Mesh(comboRingGeo, comboRingMatL);
+		this.gauntletL.add(this.comboRingL);
+
+		const comboRingMatR = new MeshBasicMaterial({
+			color: 0x00ccff, transparent: true, opacity: 0.0, side: 2,
+		});
+		this.comboRingR = new Mesh(comboRingGeo, comboRingMatR);
+		this.gauntletR.add(this.comboRingR);
 	}
 
 	buildStars() {
@@ -1003,6 +1078,15 @@ export class GameSystem extends createSystem({
 			this.setTxt(d, 'set-particles', this.particlesOn ? 'ON' : 'OFF');
 		});
 		(d.getElementById('set-back') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.showState('menu'); });
+
+		// R4: Training shot type selector
+		(d.getElementById('set-train') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			const opts: TrainingShotOption[] = ['all', 'standard', 'curve', 'power', 'split', 'phantom', 'multi'];
+			const idx = (opts.indexOf(this.trainingShotType) + 1) % opts.length;
+			this.trainingShotType = opts[idx];
+			this.setTxt(d, 'set-train', this.trainingShotType.toUpperCase());
+		});
 	}
 
 	bindAchievements() {
@@ -1111,6 +1195,8 @@ export class GameSystem extends createSystem({
 		if (s === 'menu') {
 			this.updateMenuLabels();
 			this.clearShots();
+			this.clearPowerUps(); // R4
+			this.removeWaveModifier(); // R4
 			this.applyModeTheme('arcade'); // R3: restore default theme
 			stopMusic(); // R3: stop generative music
 		}
@@ -1149,6 +1235,23 @@ export class GameSystem extends createSystem({
 		this.splitSaveTracker.clear();
 		this.splitIdCounter = 0;
 
+		// R4: Reset DDA
+		this.ddaMultiplier = 1.0;
+		this.recentResults = [];
+
+		// R4: Clear power-ups
+		this.clearPowerUps();
+		this.activePowerUp = null;
+		this.powerUpTimer = 0;
+
+		// R4: Reset dive
+		this.isDiving = false;
+		this.diveTimer = 0;
+		this.diveCooldown = 0;
+
+		// R4: Reset modifier
+		this.removeWaveModifier();
+
 		this.showState('playing');
 		this.beginWave();
 	}
@@ -1160,9 +1263,19 @@ export class GameSystem extends createSystem({
 		this.waveShotsLaunched = 0;
 		this.shotTimer = 1.0; // initial delay
 		this.waveActive = true;
+		this.powerUpSpawnedThisWave = false;
 
 		// R3: Reset split tracker per wave
 		this.splitSaveTracker.clear();
+
+		// R4: Remove previous modifier, maybe apply new one
+		this.removeWaveModifier();
+		if (this.wave >= 3 && this.mode !== 'training' && Math.random() < 0.3) {
+			const mods: WaveModifier[] = ['fast_shots', 'giant_balls', 'tiny_goal', 'mirror', 'fog_thick'];
+			this.currentModifier = mods[Math.floor(Math.random() * mods.length)];
+			this.applyWaveModifier();
+			this.modifierDisplayTimer = 3.0;
+		}
 
 		const dm = DIFF_MULT[this.difficulty];
 		const w = this.wave;
@@ -1184,6 +1297,11 @@ export class GameSystem extends createSystem({
 			this.shotInterval = Math.max(0.4, 1.5 - w * 0.06) / dm;
 		}
 
+		// R4: Apply DDA to shot interval (arcade only)
+		if (this.mode === 'arcade') {
+			this.shotInterval /= this.ddaMultiplier;
+		}
+
 		playSfx('wave');
 
 		// R3: Update music tempo with wave
@@ -1193,7 +1311,15 @@ export class GameSystem extends createSystem({
 		this.wavePreviewTimer = 2.0;
 		const types = this.getShotTypes();
 		const typeNames = types.map(t => t.charAt(0).toUpperCase() + t.slice(1));
-		const previewText = 'WAVE ' + w + ': ' + typeNames.join(' + ');
+		let previewText = 'WAVE ' + w + ': ' + typeNames.join(' + ');
+		// R4: Append modifier info
+		if (this.currentModifier !== 'normal') {
+			const modNames: Record<WaveModifier, string> = {
+				normal: '', fast_shots: 'FAST!', giant_balls: 'GIANT!',
+				tiny_goal: 'TINY GOAL!', mirror: 'MIRROR!', fog_thick: 'FOG!',
+			};
+			previewText += ' [' + modNames[this.currentModifier] + ']';
+		}
 		if (this.hudDoc) {
 			this.setTxt(this.hudDoc, 'status', previewText);
 		}
@@ -1203,6 +1329,7 @@ export class GameSystem extends createSystem({
 
 	endWave() {
 		this.waveActive = false;
+		this.removeWaveModifier(); // R4: clean up modifier
 
 		if (this.mode === 'challenge') {
 			this.challengeLevel++;
@@ -1287,6 +1414,10 @@ export class GameSystem extends createSystem({
 		if (this.mode === 'challenge' && this.challengeQueue.length > 0 && !type) {
 			type = this.challengeQueue.shift()!;
 		}
+		// R4: Training mode uses selected shot type
+		if (this.mode === 'training' && this.trainingShotType !== 'all' && !type) {
+			type = this.trainingShotType;
+		}
 		const types = this.getShotTypes();
 		if (!type) type = types[Math.floor(Math.random() * types.length)];
 
@@ -1314,11 +1445,33 @@ export class GameSystem extends createSystem({
 		if (this.mode === 'training') speed *= 0.5;
 		speed *= dm;
 
+		// R4: DDA multiplier (arcade only)
+		if (this.mode === 'arcade') {
+			speed *= this.ddaMultiplier;
+		}
+
+		// R4: Wave modifier — fast_shots
+		if (this.currentModifier === 'fast_shots') {
+			speed *= 1.5;
+		} else if (this.currentModifier === 'giant_balls') {
+			speed *= 0.7;
+		}
+
+		// R4: Power-up — slow_mo
+		if (this.activePowerUp === 'slow_mo') {
+			speed *= 0.5;
+		}
+
 		const dir = target.clone().sub(pos).normalize();
 		const vel = dir.multiplyScalar(speed);
 
 		// Mesh
-		const radius = type === 'power' ? SHOT_RADIUS * 0.8 : SHOT_RADIUS;
+		let radius = type === 'power' ? SHOT_RADIUS * 0.8 : SHOT_RADIUS;
+		// R4: Wave modifier — giant_balls
+		if (this.currentModifier === 'giant_balls') {
+			radius *= 2.0;
+		}
+
 		let color = 0x00ffcc;
 		if (type === 'curve') color = 0xffaa00;
 		else if (type === 'power') color = 0xff4444;
@@ -1466,6 +1619,12 @@ export class GameSystem extends createSystem({
 	checkBlock(shot: Shot): { blocked: boolean; isCatch: boolean } {
 		if (!shot.alive || shot.blocked) return { blocked: false, isCatch: false };
 
+		// R4: Effective block radius (power-ups + dive)
+		let effectiveRadius = BLOCK_RADIUS;
+		if (this.activePowerUp === 'shield_expand') effectiveRadius *= 2.0;
+		if (this.activePowerUp === 'magnet') effectiveRadius *= 3.0;
+		if (this.isDiving) effectiveRadius *= 1.5;
+
 		// XR controllers
 		const rightGrip = this.w.playerSpaceEntities?.gripSpaces?.right?.object3D;
 		const leftGrip = this.w.playerSpaceEntities?.gripSpaces?.left?.object3D;
@@ -1478,7 +1637,7 @@ export class GameSystem extends createSystem({
 		if (rightGrip) {
 			this.tmpVec.set(0, 0, 0);
 			rightGrip.getWorldPosition(this.tmpVec);
-			if (shot.pos.distanceTo(this.tmpVec) < BLOCK_RADIUS) {
+			if (shot.pos.distanceTo(this.tmpVec) < effectiveRadius) {
 				isCatch = !!gripHeld;
 				return { blocked: true, isCatch };
 			}
@@ -1486,7 +1645,7 @@ export class GameSystem extends createSystem({
 		if (leftGrip) {
 			this.tmpVec.set(0, 0, 0);
 			leftGrip.getWorldPosition(this.tmpVec);
-			if (shot.pos.distanceTo(this.tmpVec) < BLOCK_RADIUS) {
+			if (shot.pos.distanceTo(this.tmpVec) < effectiveRadius) {
 				isCatch = !!gripHeld;
 				return { blocked: true, isCatch };
 			}
@@ -1494,8 +1653,8 @@ export class GameSystem extends createSystem({
 
 		// Browser mode: use gauntlet positions
 		if (!rightGrip && !leftGrip) {
-			if (shot.pos.distanceTo(this.gauntletPosL) < BLOCK_RADIUS) return { blocked: true, isCatch: false };
-			if (shot.pos.distanceTo(this.gauntletPosR) < BLOCK_RADIUS) return { blocked: true, isCatch: false };
+			if (shot.pos.distanceTo(this.gauntletPosL) < effectiveRadius) return { blocked: true, isCatch: false };
+			if (shot.pos.distanceTo(this.gauntletPosR) < effectiveRadius) return { blocked: true, isCatch: false };
 		}
 
 		return { blocked: false, isCatch: false };
@@ -1529,8 +1688,19 @@ export class GameSystem extends createSystem({
 			playSfx('save');
 		}
 
-		const earned = base * multi;
+		// R4: Double points power-up
+		let earnMulti = 1;
+		if (this.activePowerUp === 'double_points') earnMulti = 2;
+
+		const earned = base * multi * earnMulti;
 		this.score += earned;
+
+		// R4: DDA tracking (arcade only)
+		if (this.mode === 'arcade') {
+			this.recentResults.push(true);
+			if (this.recentResults.length > 10) this.recentResults.shift();
+			this.updateDDA();
+		}
 
 		// Particles
 		if (this.particlesOn) this.spawnSaveParticles(shot.pos, shot.type === 'power' ? 0xff4444 : 0x00ffcc);
@@ -1577,12 +1747,20 @@ export class GameSystem extends createSystem({
 		this.scene.remove(shot.trail);
 
 		this.combo = 0;
+		this.comboRingFlashTimer = 0.3; // R4: flash red on combo reset
 		this.waveGoals++;
 		this.totalGoals++;
 		if (this.mode !== 'training' && this.mode !== 'timeattack') this.lives--;
 
 		playSfx('goal');
 		if (this.particlesOn) this.spawnSaveParticles(shot.pos, 0xff4444);
+
+		// R4: DDA tracking (arcade only)
+		if (this.mode === 'arcade') {
+			this.recentResults.push(false);
+			if (this.recentResults.length > 10) this.recentResults.shift();
+			this.updateDDA();
+		}
 
 		// R2: Goal flash — turn posts red
 		this.goalFlashTimer = 0.5;
@@ -1664,6 +1842,280 @@ export class GameSystem extends createSystem({
 		playSfx('achieve');
 	}
 
+	// ── R4: Power-up system ──
+	maybeSpawnPowerUp() {
+		if (this.powerUpSpawnedThisWave) return;
+		if (this.mode === 'training') return;
+		if (Math.random() > 0.15) return;
+		this.powerUpSpawnedThisWave = true;
+
+		const types: PowerUpType[] = ['shield_expand', 'slow_mo', 'double_points', 'magnet'];
+		const puType = types[Math.floor(Math.random() * types.length)];
+
+		const colors: Record<PowerUpType, number> = {
+			shield_expand: 0x00ffcc, slow_mo: 0x4488ff,
+			double_points: 0xffcc00, magnet: 0xff44cc,
+		};
+		const color = colors[puType];
+
+		const geo = new SphereGeometry(0.15, 12, 8);
+		const mat = new MeshStandardMaterial({
+			color, emissive: color, emissiveIntensity: 1.5,
+			transparent: true, opacity: 0.85,
+		});
+		const mesh = new Mesh(geo, mat);
+		const x = (Math.random() - 0.5) * (GOAL_WIDTH - 1);
+		const y = 0.8 + Math.random() * (GOAL_HEIGHT - 1.5);
+		const z = -1 - Math.random() * 2;
+		mesh.position.set(x, y, z);
+		this.scene.add(mesh);
+
+		this.powerUps.push({ mesh, type: puType, pos: new Vector3(x, y, z), alive: true, timer: 8.0 });
+	}
+
+	updatePowerUps(dt: number, time: number) {
+		// Update active power-up timer
+		if (this.activePowerUp) {
+			this.powerUpTimer -= dt;
+			if (this.powerUpTimer <= 0) {
+				this.activePowerUp = null;
+				this.powerUpTimer = 0;
+				if (this.hudDoc) this.setTxt(this.hudDoc, 'status', ' ');
+			} else {
+				// Update HUD
+				const names: Record<PowerUpType, string> = {
+					shield_expand: 'SHIELD', slow_mo: 'SLOW-MO',
+					double_points: '2x POINTS', magnet: 'MAGNET',
+				};
+				if (this.hudDoc && this.wavePreviewTimer <= 0 && this.modifierDisplayTimer <= 0) {
+					this.setTxt(this.hudDoc, 'status', names[this.activePowerUp] + ' ' + Math.ceil(this.powerUpTimer) + 's');
+				}
+			}
+		}
+
+		// Update floating orbs
+		for (let i = this.powerUps.length - 1; i >= 0; i--) {
+			const pu = this.powerUps[i];
+			if (!pu.alive) continue;
+
+			pu.timer -= dt;
+			if (pu.timer <= 0) {
+				pu.alive = false;
+				this.scene.remove(pu.mesh);
+				continue;
+			}
+
+			// Bob up/down and rotate
+			pu.mesh.position.y = pu.pos.y + Math.sin(time * 2) * 0.15;
+			pu.mesh.rotation.y += dt * 2;
+
+			// Pulse opacity
+			const mat = pu.mesh.material as MeshStandardMaterial;
+			mat.opacity = 0.6 + Math.sin(time * 4) * 0.25;
+
+			// Check collection by gauntlets
+			const distL = pu.mesh.position.distanceTo(this.gauntletPosL);
+			const distR = pu.mesh.position.distanceTo(this.gauntletPosR);
+			if (distL < 0.4 || distR < 0.4) {
+				this.collectPowerUp(pu);
+			}
+		}
+
+		// Clean dead power-ups
+		this.powerUps = this.powerUps.filter(p => p.alive);
+	}
+
+	collectPowerUp(pu: PowerUp) {
+		pu.alive = false;
+		this.scene.remove(pu.mesh);
+		this.activePowerUp = pu.type;
+		this.powerUpTimer = 10.0;
+		playSfx('powerup');
+
+		// Particles at collection point
+		if (this.particlesOn) {
+			const colors: Record<PowerUpType, number> = {
+				shield_expand: 0x00ffcc, slow_mo: 0x4488ff,
+				double_points: 0xffcc00, magnet: 0xff44cc,
+			};
+			this.spawnSaveParticles(pu.mesh.position, colors[pu.type]);
+		}
+	}
+
+	clearPowerUps() {
+		for (const pu of this.powerUps) {
+			this.scene.remove(pu.mesh);
+		}
+		this.powerUps = [];
+		this.activePowerUp = null;
+		this.powerUpTimer = 0;
+	}
+
+	// ── R4: Magnet attraction ──
+	applyMagnetAttraction(dt: number) {
+		if (this.activePowerUp !== 'magnet') return;
+		for (const s of this.shots) {
+			if (!s.alive) continue;
+			// Find nearest gauntlet
+			const distL = s.pos.distanceTo(this.gauntletPosL);
+			const distR = s.pos.distanceTo(this.gauntletPosR);
+			const nearestPos = distL < distR ? this.gauntletPosL : this.gauntletPosR;
+			const dist = Math.min(distL, distR);
+			if (dist < 1.5 && s.pos.z > -3) {
+				// Pull shot toward nearest gauntlet
+				const pull = nearestPos.clone().sub(s.pos).normalize().multiplyScalar(dt * 3);
+				s.vel.add(pull);
+			}
+		}
+	}
+
+	// ── R4: Wave modifier system ──
+	applyWaveModifier() {
+		if (this.currentModifier === 'tiny_goal') {
+			// Shrink goal by 30%
+			const scale = 0.7;
+			this.goalGroup.scale.set(scale, scale, 1);
+		} else if (this.currentModifier === 'fog_thick') {
+			this.scene.fog = new FogExp2(
+				(this.scene.fog as FogExp2).color.getHex(),
+				0.04, // double density
+			);
+		}
+		// fast_shots, giant_balls, mirror are applied dynamically
+	}
+
+	removeWaveModifier() {
+		if (this.currentModifier === 'tiny_goal') {
+			this.goalGroup.scale.set(1, 1, 1);
+		} else if (this.currentModifier === 'fog_thick') {
+			this.scene.fog = new FogExp2(
+				(this.scene.fog as FogExp2).color.getHex(),
+				0.02, // restore
+			);
+		}
+		this.currentModifier = 'normal';
+	}
+
+	// ── R4: Dynamic Difficulty Adjustment ──
+	updateDDA() {
+		if (this.recentResults.length < 10) return;
+		const saves = this.recentResults.filter(Boolean).length;
+		const rate = saves / this.recentResults.length;
+
+		if (rate > 0.9) {
+			this.ddaMultiplier = Math.min(1.3, this.ddaMultiplier + 0.1);
+		} else if (rate < 0.4) {
+			this.ddaMultiplier = Math.max(0.7, this.ddaMultiplier - 0.1);
+		}
+	}
+
+	// ── R4: Dive mechanic ──
+	updateDive(dt: number) {
+		// Only in browser mode
+		const rightGrip = this.w.playerSpaceEntities?.gripSpaces?.right?.object3D;
+		if (rightGrip) return;
+
+		// Cooldown
+		if (this.diveCooldown > 0) {
+			this.diveCooldown -= dt;
+		}
+
+		const kb = this.w.input.keyboard;
+
+		if (!this.isDiving && this.diveCooldown <= 0) {
+			let diveDir = 0;
+			if (kb.getKeyDown('Space')) {
+				// Dive in current movement direction
+				if (kb.getKeyPressed('KeyA') || kb.getKeyPressed('ArrowLeft')) diveDir = -1;
+				else if (kb.getKeyPressed('KeyD') || kb.getKeyPressed('ArrowRight')) diveDir = 1;
+				else diveDir = 1; // default right
+			} else if (kb.getKeyDown('KeyQ')) {
+				diveDir = -1;
+			} else if (kb.getKeyDown('KeyE')) {
+				diveDir = 1;
+			}
+
+			if (diveDir !== 0) {
+				this.isDiving = true;
+				this.diveTimer = 0;
+				this.divePhase = 'lunge';
+				this.diveOriginL.copy(this.gauntletPosL);
+				this.diveOriginR.copy(this.gauntletPosR);
+				this.diveTargetL.copy(this.gauntletPosL).add(new Vector3(diveDir * 2, 0, 0));
+				this.diveTargetR.copy(this.gauntletPosR).add(new Vector3(diveDir * 2, 0, 0));
+				// Clamp targets
+				const hw = GOAL_WIDTH / 2 + 1.0;
+				this.diveTargetL.x = Math.max(-hw, Math.min(hw, this.diveTargetL.x));
+				this.diveTargetR.x = Math.max(-hw, Math.min(hw, this.diveTargetR.x));
+				playSfx('dive');
+
+				// Dive trail particles
+				if (this.particlesOn) {
+					this.spawnSaveParticles(this.gauntletPosL, 0x00ccff);
+				}
+			}
+		}
+
+		if (this.isDiving) {
+			this.diveTimer += dt;
+
+			if (this.divePhase === 'lunge') {
+				const t = Math.min(1, this.diveTimer / 0.2);
+				this.gauntletPosL.lerpVectors(this.diveOriginL, this.diveTargetL, t);
+				this.gauntletPosR.lerpVectors(this.diveOriginR, this.diveTargetR, t);
+				if (t >= 1) {
+					this.divePhase = 'recover';
+					this.diveTimer = 0;
+				}
+			} else {
+				const t = Math.min(1, this.diveTimer / 0.5);
+				this.gauntletPosL.lerpVectors(this.diveTargetL, this.diveOriginL, t);
+				this.gauntletPosR.lerpVectors(this.diveTargetR, this.diveOriginR, t);
+				if (t >= 1) {
+					this.isDiving = false;
+					this.diveCooldown = 1.5;
+				}
+			}
+
+			this.gauntletL.position.copy(this.gauntletPosL);
+			this.gauntletR.position.copy(this.gauntletPosR);
+		}
+	}
+
+	// ── R4: Combo ring update ──
+	updateComboRings(time: number, dt: number) {
+		const comboLevel = Math.min(this.combo, 20);
+		const ringScale = 0.5 + (comboLevel / 20) * 1.5; // 0.5 to 2.0
+
+		// Color progression: cyan -> green -> yellow -> orange -> red
+		let ringColor: Color;
+		if (comboLevel < 5) {
+			ringColor = new Color(0x00ccff);
+		} else if (comboLevel < 10) {
+			ringColor = new Color(0x00ccff).lerp(new Color(0x00ff44), (comboLevel - 5) / 5);
+		} else if (comboLevel < 15) {
+			ringColor = new Color(0x00ff44).lerp(new Color(0xffaa00), (comboLevel - 10) / 5);
+		} else {
+			ringColor = new Color(0xffaa00).lerp(new Color(0xff2200), (comboLevel - 15) / 5);
+		}
+
+		// Flash red when combo resets
+		if (this.comboRingFlashTimer > 0) {
+			this.comboRingFlashTimer -= dt;
+			ringColor = new Color(0xff0000);
+		}
+
+		const opacity = comboLevel > 0 ? (0.15 + (comboLevel / 20) * 0.35) : 0.0;
+
+		for (const ring of [this.comboRingL, this.comboRingR]) {
+			ring.scale.set(ringScale, 1, ringScale);
+			ring.rotation.y += dt * (1 + comboLevel * 0.3);
+			const mat = ring.material as MeshBasicMaterial;
+			mat.color.copy(ringColor);
+			mat.opacity = opacity + Math.sin(time * (3 + comboLevel * 0.5)) * 0.05;
+		}
+	}
+
 	// ── Update ──
 	update(delta: number, _time: number) {
 		// R2: Orbit spheres animate even when not playing (ambient decoration)
@@ -1719,6 +2171,30 @@ export class GameSystem extends createSystem({
 		// R2: Gauntlet shield combo scaling
 		this.updateShields(_time);
 
+		// R4: Combo visual rings
+		this.updateComboRings(_time, dt);
+
+		// R4: Modifier display timer
+		if (this.modifierDisplayTimer > 0) {
+			this.modifierDisplayTimer -= dt;
+			if (this.modifierDisplayTimer <= 0) {
+				this.modifierDisplayTimer = 0;
+				if (this.hudDoc && this.wavePreviewTimer <= 0 && !this.activePowerUp) {
+					this.setTxt(this.hudDoc, 'status', ' ');
+				}
+			}
+		}
+
+		// R4: Power-up system
+		this.updatePowerUps(dt, _time);
+		// Maybe spawn a power-up during this wave
+		if (this.waveActive && !this.powerUpSpawnedThisWave && this.waveShotsLaunched >= 2) {
+			this.maybeSpawnPowerUp();
+		}
+
+		// R4: Magnet attraction
+		this.applyMagnetAttraction(dt);
+
 		// Time attack countdown
 		if (this.mode === 'timeattack') {
 			this.timeLeft -= dt;
@@ -1733,6 +2209,9 @@ export class GameSystem extends createSystem({
 
 		// Browser mode: move gauntlets with mouse
 		this.updateBrowserGauntlets();
+
+		// R4: Dive mechanic
+		this.updateDive(dt);
 
 		// XR mode: update gauntlet visuals to match controllers
 		this.updateXRGauntlets();
@@ -2089,13 +2568,16 @@ export class GameSystem extends createSystem({
 		const kb = this.w.input.keyboard;
 		const moveSpeed = 3;
 
+		// R4: Mirror modifier inverts left/right
+		const mirrorMult = this.currentModifier === 'mirror' ? -1 : 1;
+
 		if (kb.getKeyPressed('KeyA') || kb.getKeyPressed('ArrowLeft')) {
-			this.gauntletPosL.x -= moveSpeed * 0.016;
-			this.gauntletPosR.x -= moveSpeed * 0.016;
+			this.gauntletPosL.x -= moveSpeed * 0.016 * mirrorMult;
+			this.gauntletPosR.x -= moveSpeed * 0.016 * mirrorMult;
 		}
 		if (kb.getKeyPressed('KeyD') || kb.getKeyPressed('ArrowRight')) {
-			this.gauntletPosL.x += moveSpeed * 0.016;
-			this.gauntletPosR.x += moveSpeed * 0.016;
+			this.gauntletPosL.x += moveSpeed * 0.016 * mirrorMult;
+			this.gauntletPosR.x += moveSpeed * 0.016 * mirrorMult;
 		}
 		if (kb.getKeyPressed('KeyW') || kb.getKeyPressed('ArrowUp')) {
 			this.gauntletPosL.y += moveSpeed * 0.016;
