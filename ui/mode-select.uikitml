@@ -9,7 +9,7 @@
   borderColor="#00ccff"
   borderWidth="2"
   width="440"
-  height="520"
+  height="620"
 >
   <text fontSize="28" color="#00ffcc" fontWeight="bold">SELECT MODE</text>
 
@@ -41,7 +41,7 @@
       gap="2"
     >
       <text fontSize="18" color="#ffaa00" fontWeight="bold">CHALLENGE</text>
-      <text fontSize="11" color="#887744">10 preset patterns - no mistakes allowed</text>
+      <text name="challenge-desc" fontSize="11" color="#887744">10 preset patterns - no mistakes allowed</text>
     </container>
 
     <container
@@ -72,6 +72,21 @@
     >
       <text fontSize="18" color="#cc44ff" fontWeight="bold">TIME ATTACK</text>
       <text fontSize="11" color="#885599">60 seconds - save as many as you can</text>
+    </container>
+
+    <container
+      name="btn-endless"
+      flexDirection="column"
+      padding="10"
+      backgroundColor="#1a0800"
+      borderColor="#ff6600"
+      borderWidth="1"
+      borderRadius="8"
+      cursor="pointer"
+      gap="2"
+    >
+      <text fontSize="18" color="#ff6600" fontWeight="bold">ENDLESS</text>
+      <text name="endless-desc" fontSize="11" color="#886644">No wave breaks - difficulty never stops climbing</text>
     </container>
   </container>
 

@@ -1,0 +1,65 @@
+<container
+  flexDirection="column"
+  alignItems="center"
+  gap="8"
+  padding="16"
+  backgroundColor="#000a15ee"
+  borderRadius="14"
+  borderColor="#88ccff"
+  borderWidth="2"
+  width="480"
+  height="640"
+>
+  <text fontSize="24" color="#88ccff" fontWeight="bold">HOW TO PLAY</text>
+
+  <container flexDirection="column" gap="4" width="420" marginTop="4">
+    <text fontSize="14" color="#00ffcc" fontWeight="bold">-- CONTROLS --</text>
+    <text fontSize="11" color="#8899aa">Move gauntlets: WASD or Arrow keys</text>
+    <text fontSize="11" color="#8899aa">Dive: Space / Q (left) / E (right)</text>
+    <text fontSize="11" color="#8899aa">VR: Use controllers to block shots</text>
+    <text fontSize="11" color="#8899aa">VR Grip: Hold grip to catch for bonus</text>
+  </container>
+
+  <container flexDirection="column" gap="4" width="420">
+    <text fontSize="14" color="#ffaa00" fontWeight="bold">-- SHOT TYPES --</text>
+    <text fontSize="11" color="#00ffcc">Standard (cyan) - basic straight shot</text>
+    <text fontSize="11" color="#ffaa00">Curve (orange) - swerves side-to-side</text>
+    <text fontSize="11" color="#ff4444">Power (red) - fast and heavy cube</text>
+    <text fontSize="11" color="#cc44ff">Split (purple) - splits into two halves</text>
+    <text fontSize="11" color="#44ccff">Phantom (blue) - vanishes mid-flight</text>
+    <text fontSize="11" color="#ff8800">Multi (orange) - 3-shot spread burst</text>
+  </container>
+
+  <container flexDirection="column" gap="4" width="420">
+    <text fontSize="14" color="#cc44ff" fontWeight="bold">-- POWER-UPS --</text>
+    <text fontSize="11" color="#00ffcc">Shield (cyan) - doubles block radius</text>
+    <text fontSize="11" color="#4488ff">Slow-Mo (blue) - halves shot speed</text>
+    <text fontSize="11" color="#ffcc00">Double Points (gold) - 2x score</text>
+    <text fontSize="11" color="#ff44cc">Magnet (pink) - auto-attracts shots</text>
+  </container>
+
+  <container flexDirection="column" gap="4" width="420">
+    <text fontSize="14" color="#44ff88" fontWeight="bold">-- GAME MODES --</text>
+    <text fontSize="11" color="#00ffcc">Arcade - 3 lives, climb the waves</text>
+    <text fontSize="11" color="#ffaa00">Challenge - 10 scripted patterns</text>
+    <text fontSize="11" color="#44cc44">Training - slow speed practice</text>
+    <text fontSize="11" color="#cc44ff">Time Attack - 60s, save everything</text>
+    <text fontSize="11" color="#ff6600">Endless - no breaks, ever harder</text>
+  </container>
+
+  <container flexDirection="column" gap="4" width="420">
+    <text fontSize="14" color="#ff4466" fontWeight="bold">-- TIPS --</text>
+    <text fontSize="11" color="#8899aa">Build combos for multiplied scores</text>
+    <text fontSize="11" color="#8899aa">Boss waves every 5th arcade wave</text>
+    <text fontSize="11" color="#8899aa">Watch for wave modifiers on wave 3+</text>
+  </container>
+
+  <text
+    name="tut-back"
+    fontSize="14"
+    color="#446688"
+    marginTop="6"
+    cursor="pointer"
+    padding="6"
+  >&lt; BACK</text>
+</container>

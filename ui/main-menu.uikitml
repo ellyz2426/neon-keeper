@@ -9,7 +9,7 @@
   borderColor="#00ccff"
   borderWidth="2"
   width="440"
-  height="500"
+  height="580"
 >
   <text name="title" fontSize="38" color="#00ffcc" fontWeight="bold">NEON KEEPER</text>
   <text fontSize="14" color="#558899">VR Goalkeeper Challenge</text>
@@ -65,6 +65,19 @@
       borderColor="#aa88ff"
       borderWidth="1"
     >STATS</text>
+
+    <text
+      name="btn-tutorial"
+      fontSize="16"
+      color="#88ccff"
+      backgroundColor="#001020"
+      padding="8"
+      borderRadius="6"
+      textAlign="center"
+      cursor="pointer"
+      borderColor="#88ccff"
+      borderWidth="1"
+    >HOW TO PLAY</text>
 
     <text
       name="btn-leaderboard"
