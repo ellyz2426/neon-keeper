@@ -13,13 +13,23 @@ import {
 } from '@iwsdk/core';
 
 // ── Types ──
-type GameState = 'menu' | 'mode_select' | 'playing' | 'wave_complete' | 'game_over' | 'settings' | 'achievements' | 'stats';
+type GameState = 'menu' | 'mode_select' | 'playing' | 'wave_complete' | 'game_over' | 'settings' | 'achievements' | 'stats' | 'leaderboard';
 type GameMode = 'arcade' | 'challenge' | 'training' | 'timeattack';
 type ShotType = 'standard' | 'curve' | 'power' | 'split' | 'phantom' | 'multi';
 type Difficulty = 'easy' | 'normal' | 'hard';
 type PowerUpType = 'shield_expand' | 'slow_mo' | 'double_points' | 'magnet';
 type WaveModifier = 'normal' | 'fast_shots' | 'giant_balls' | 'tiny_goal' | 'mirror' | 'fog_thick';
 type TrainingShotOption = ShotType | 'all';
+
+interface LeaderboardEntry {
+	score: number;
+	wave: number;
+	grade: string;
+	mode: GameMode;
+	date: string;
+	saves: number;
+	catches: number;
+}
 
 interface PowerUp {
 	mesh: Mesh;
@@ -47,6 +57,15 @@ interface Shot {
 	spawnZ: number;
 	splitId: number;
 	approachSoundPlayed: boolean;
+	hitsRemaining: number;
+	isBoss: boolean;
+}
+
+interface ModeStatEntry {
+	gamesPlayed: number;
+	bestScore: number;
+	bestWave: number;
+	totalSaves: number;
 }
 
 interface SaveData {
@@ -60,6 +79,9 @@ interface SaveData {
 	achievements: boolean[];
 	playTimeMs: number;
 	powerSaves: number;
+	gauntletColor: string;
+	modeStats: Record<string, ModeStatEntry>;
+	leaderboard: LeaderboardEntry[];
 }
 
 // ── Constants ──
@@ -185,6 +207,22 @@ function playSfx(type: string, vol = 0.3) {
 			o.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.08);
 			g.gain.setValueAtTime(vol * 0.3, ctx.currentTime);
 			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+		} else if (type === 'bosshit') {
+			// Heavy impact for boss hit
+			o.type = 'sawtooth';
+			o.frequency.setValueAtTime(100, ctx.currentTime);
+			o.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.3);
+			g.gain.setValueAtTime(vol * 0.8, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+		} else if (type === 'bossdefeat') {
+			// Triumphant fanfare for boss defeat
+			o.type = 'sine';
+			o.frequency.setValueAtTime(440, ctx.currentTime);
+			o.frequency.setValueAtTime(554, ctx.currentTime + 0.1);
+			o.frequency.setValueAtTime(659, ctx.currentTime + 0.2);
+			o.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
+			g.gain.setValueAtTime(vol * 0.6, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
 		} else {
 			o.type = 'sine';
 			o.frequency.setValueAtTime(440, ctx.currentTime);
@@ -415,6 +453,7 @@ export class GameSystem extends createSystem({
 	settingsPanel: { required: [PanelUI, PanelDocument], where: [eq(PanelUI, 'config', './ui/settings.json')] },
 	achvPanel: { required: [PanelUI, PanelDocument], where: [eq(PanelUI, 'config', './ui/achvlist.json')] },
 	statsPanel: { required: [PanelUI, PanelDocument], where: [eq(PanelUI, 'config', './ui/stats.json')] },
+	lbPanel: { required: [PanelUI, PanelDocument], where: [eq(PanelUI, 'config', './ui/leaderboard.json')] },
 }) {
 	// ── World ref ──
 	w!: World;
@@ -423,7 +462,7 @@ export class GameSystem extends createSystem({
 	// ── Panel entities ──
 	menuEntity!: Entity; modeEntity!: Entity; hudEntity!: Entity;
 	scorecardEntity!: Entity; gameOverEntity!: Entity; settingsEntity!: Entity;
-	achvEntity!: Entity; statsEntity!: Entity;
+	achvEntity!: Entity; statsEntity!: Entity; lbEntity!: Entity;
 
 	// ── Panel docs ──
 	menuDoc: UIKitDocument | null = null;
@@ -434,6 +473,7 @@ export class GameSystem extends createSystem({
 	settingsDoc: UIKitDocument | null = null;
 	achvDoc: UIKitDocument | null = null;
 	statsDoc: UIKitDocument | null = null;
+	lbDoc: UIKitDocument | null = null;
 
 	// ── Game state ──
 	state: GameState = 'menu';
@@ -551,6 +591,45 @@ export class GameSystem extends createSystem({
 	comboRingR!: Mesh;
 	comboRingFlashTimer = 0;
 
+	// ── R5: Shot warning indicators ──
+	warningArrows: { mesh: Mesh; shotRef: Shot }[] = [];
+
+	// ── R5: Boss wave ──
+	bossSpawnedThisWave = false;
+	bossDefeatedThisWave = false;
+
+	// ── R5: Screen flash ──
+	flashMesh!: Mesh;
+	flashTimer = 0;
+	flashDuration = 0;
+
+	// ── R5: Gauntlet customization ──
+	gauntletColor = 'Cyan';
+	gauntletColorMap: Record<string, number> = {
+		Cyan: 0x00ccff, Green: 0x00ff66, Gold: 0xffcc00, Pink: 0xff66cc, White: 0xeeeeff,
+	};
+
+	// ── R6: Mouse-aim control ──
+	mouseAimEnabled = true;
+	mouseNormX = 0;
+	mouseNormY = 0.5;
+	mouseListenerAdded = false;
+
+	// ── R6: Arena reactivity ──
+	floorGridMat!: LineBasicMaterial;
+	arenaPulseTimer = 0;
+	arenaPulseColor = 0x00ffcc;
+
+	// ── R6: Countdown ──
+	countdownTimer = 0;
+	countdownActive = false;
+
+	// ── R6: Leaderboard tab ──
+	lbActiveTab: 'arcade' | 'challenge' | 'timeattack' = 'arcade';
+
+	// ── R6: Save shockwave rings ──
+	shockwaves: { mesh: Mesh; life: number; maxLife: number }[] = [];
+
 	// ── Save data ──
 	saveData!: SaveData;
 
@@ -569,12 +648,35 @@ export class GameSystem extends createSystem({
 	loadSave() {
 		try {
 			const raw = localStorage.getItem('neon-keeper-save');
-			if (raw) { this.saveData = JSON.parse(raw); return; }
+			if (raw) {
+				this.saveData = JSON.parse(raw);
+				// Migrate: ensure new fields exist
+				if (!this.saveData.gauntletColor) this.saveData.gauntletColor = 'Cyan';
+				if (!this.saveData.modeStats) {
+					this.saveData.modeStats = {
+						arcade: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+						challenge: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+						training: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+						timeattack: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+					};
+				}
+				if (!this.saveData.leaderboard) this.saveData.leaderboard = [];
+				this.gauntletColor = this.saveData.gauntletColor;
+				return;
+			}
 		} catch { /* */ }
 		this.saveData = {
 			gamesPlayed: 0, totalSaves: 0, totalCatches: 0, totalGoals: 0,
 			bestWave: 0, bestScore: 0, bestStreak: 0,
 			achievements: new Array(20).fill(false), playTimeMs: 0, powerSaves: 0,
+			gauntletColor: 'Cyan',
+			modeStats: {
+				arcade: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+				challenge: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+				training: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+				timeattack: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+			},
+			leaderboard: [],
 		};
 	}
 
@@ -638,6 +740,9 @@ export class GameSystem extends createSystem({
 
 		// R2: Ambient floating motes
 		this.buildAmbientMotes();
+
+		// R5: Screen flash overlay
+		this.buildFlashMesh();
 	}
 
 	buildFloorGrid() {
@@ -650,8 +755,8 @@ export class GameSystem extends createSystem({
 		}
 		const geo = new BufferGeometry();
 		geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
-		const mat = new LineBasicMaterial({ color: 0x003344, transparent: true, opacity: 0.3 });
-		this.floorGrid = new LineSegments(geo, mat);
+		this.floorGridMat = new LineBasicMaterial({ color: 0x003344, transparent: true, opacity: 0.3 });
+		this.floorGrid = new LineSegments(geo, this.floorGridMat);
 		this.scene.add(this.floorGrid);
 	}
 
@@ -929,6 +1034,28 @@ export class GameSystem extends createSystem({
 		}
 	}
 
+	// ── R5: Screen flash overlay ──
+	buildFlashMesh() {
+		const geo = new BoxGeometry(20, 20, 0.001);
+		const mat = new MeshBasicMaterial({
+			color: 0xffffff, transparent: true, opacity: 0,
+			depthWrite: false, side: DoubleSide,
+		});
+		this.flashMesh = new Mesh(geo, mat);
+		this.flashMesh.position.set(0, 1.7, -0.5);
+		this.flashMesh.visible = false;
+		this.scene.add(this.flashMesh);
+	}
+
+	triggerFlash(color: number, intensity: number, duration: number) {
+		const mat = this.flashMesh.material as MeshBasicMaterial;
+		mat.color.set(color);
+		mat.opacity = intensity;
+		this.flashMesh.visible = true;
+		this.flashTimer = duration;
+		this.flashDuration = duration;
+	}
+
 	// ── Panels ──
 	createPanels() {
 		const panelZ = -1.8;
@@ -978,6 +1105,11 @@ export class GameSystem extends createSystem({
 		this.statsEntity = this.w.createTransformEntity(new Group());
 		this.statsEntity.object3D!.position.set(0, hideY, panelZ);
 		this.statsEntity.addComponent(PanelUI, { config: './ui/stats.json', maxWidth: 0.9 });
+
+		// Leaderboard (hidden off-screen)
+		this.lbEntity = this.w.createTransformEntity(new Group());
+		this.lbEntity.object3D!.position.set(0, hideY, panelZ);
+		this.lbEntity.addComponent(PanelUI, { config: './ui/leaderboard.json', maxWidth: 1.0 });
 	}
 
 	init() {
@@ -1020,6 +1152,11 @@ export class GameSystem extends createSystem({
 			if (!this.statsDoc) return;
 			this.bindStats();
 		});
+		this.queries.lbPanel.subscribe('qualify', (e) => {
+			this.lbDoc = PanelDocument.data.document[e.index] as UIKitDocument;
+			if (!this.lbDoc) return;
+			this.bindLeaderboard();
+		});
 	}
 
 	// ── Panel bindings ──
@@ -1029,6 +1166,7 @@ export class GameSystem extends createSystem({
 		(d.getElementById('btn-settings') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.showState('settings'); });
 		(d.getElementById('btn-achieve') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.refreshAchievements(); this.showState('achievements'); });
 		(d.getElementById('btn-stats') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.refreshStats(); this.showState('stats'); });
+		(d.getElementById('btn-leaderboard') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.refreshLeaderboard(); this.showState('leaderboard'); });
 		this.updateMenuLabels();
 	}
 
@@ -1087,6 +1225,18 @@ export class GameSystem extends createSystem({
 			this.trainingShotType = opts[idx];
 			this.setTxt(d, 'set-train', this.trainingShotType.toUpperCase());
 		});
+
+		// R5: Gauntlet color selector
+		(d.getElementById('set-gauntlet') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			const opts = ['Cyan', 'Green', 'Gold', 'Pink', 'White'];
+			const idx = (opts.indexOf(this.gauntletColor) + 1) % opts.length;
+			this.gauntletColor = opts[idx];
+			this.applyGauntletColor();
+			this.setTxt(d, 'set-gauntlet', this.gauntletColor);
+			this.saveData.gauntletColor = this.gauntletColor;
+			this.persistSave();
+		});
 	}
 
 	bindAchievements() {
@@ -1099,6 +1249,72 @@ export class GameSystem extends createSystem({
 		const d = this.statsDoc!;
 		(d.getElementById('st-back') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.showState('menu'); });
 		this.refreshStats();
+	}
+
+	bindLeaderboard() {
+		const d = this.lbDoc!;
+		(d.getElementById('lb-back') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.showState('menu'); });
+		(d.getElementById('lb-tab-arcade') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.lbActiveTab = 'arcade'; this.refreshLeaderboard(); });
+		(d.getElementById('lb-tab-challenge') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.lbActiveTab = 'challenge'; this.refreshLeaderboard(); });
+		(d.getElementById('lb-tab-timeattack') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.lbActiveTab = 'timeattack'; this.refreshLeaderboard(); });
+		this.refreshLeaderboard();
+	}
+
+	refreshLeaderboard() {
+		if (!this.lbDoc) return;
+		const d = this.lbDoc;
+		const tab = this.lbActiveTab;
+		const titles: Record<string, string> = { arcade: 'ARCADE', challenge: 'CHALLENGE', timeattack: 'TIME ATTACK' };
+		this.setTxt(d, 'lb-mode-title', titles[tab] || 'ARCADE');
+
+		// Filter entries for this mode, sorted by score desc
+		const entries = (this.saveData.leaderboard || [])
+			.filter(e => e.mode === tab)
+			.sort((a, b) => b.score - a.score)
+			.slice(0, 5);
+
+		for (let i = 0; i < 5; i++) {
+			if (i < entries.length) {
+				const e = entries[i];
+				this.setTxt(d, 'lb-rank-' + i, String(i + 1));
+				this.setTxt(d, 'lb-score-' + i, String(e.score));
+				this.setTxt(d, 'lb-wave-' + i, String(e.wave));
+				this.setTxt(d, 'lb-grade-' + i, e.grade);
+				this.setTxt(d, 'lb-date-' + i, e.date);
+			} else {
+				this.setTxt(d, 'lb-rank-' + i, String(i + 1));
+				this.setTxt(d, 'lb-score-' + i, '---');
+				this.setTxt(d, 'lb-wave-' + i, '--');
+				this.setTxt(d, 'lb-grade-' + i, '--');
+				this.setTxt(d, 'lb-date-' + i, '--');
+			}
+		}
+
+		const best = entries.length > 0 ? entries[0].score : 0;
+		this.setTxt(d, 'lb-personal', 'Your best: ' + (best > 0 ? String(best) : '---'));
+	}
+
+	recordLeaderboard() {
+		if (this.mode === 'training') return;
+		if (!this.saveData.leaderboard) this.saveData.leaderboard = [];
+		const now = new Date();
+		const dateStr = (now.getMonth() + 1) + '/' + now.getDate();
+		const entry: LeaderboardEntry = {
+			score: this.score,
+			wave: this.wave,
+			grade: this.getGrade(),
+			mode: this.mode,
+			date: dateStr,
+			saves: this.totalSaves,
+			catches: this.totalCatches,
+		};
+		this.saveData.leaderboard.push(entry);
+		// Keep max 50 entries total to avoid localStorage bloat
+		if (this.saveData.leaderboard.length > 50) {
+			// Remove oldest low-score entries
+			this.saveData.leaderboard.sort((a, b) => b.score - a.score);
+			this.saveData.leaderboard = this.saveData.leaderboard.slice(0, 50);
+		}
 	}
 
 	// ── UI Helpers ──
@@ -1156,6 +1372,15 @@ export class GameSystem extends createSystem({
 		this.setTxt(this.statsDoc, 'st-beststreak', String(s.bestStreak));
 		const mins = Math.floor(s.playTimeMs / 60000);
 		this.setTxt(this.statsDoc, 'st-time', mins < 60 ? mins + 'm' : Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm');
+
+		// R5: Per-mode bests
+		if (s.modeStats) {
+			const ms = s.modeStats;
+			this.setTxt(this.statsDoc, 'st-arcade-best', ms.arcade ? String(ms.arcade.bestScore) : '0');
+			this.setTxt(this.statsDoc, 'st-challenge-best', ms.challenge ? String(ms.challenge.bestScore) : '0');
+			this.setTxt(this.statsDoc, 'st-training-best', ms.training ? String(ms.training.bestScore) : '0');
+			this.setTxt(this.statsDoc, 'st-timeattack-best', ms.timeattack ? String(ms.timeattack.bestScore) : '0');
+		}
 	}
 
 	getRank(): string {
@@ -1185,6 +1410,7 @@ export class GameSystem extends createSystem({
 		this.settingsEntity.object3D!.position.set(0, s === 'settings' ? showY : hideY, panelZ);
 		this.achvEntity.object3D!.position.set(0, s === 'achievements' ? showY : hideY, panelZ);
 		this.statsEntity.object3D!.position.set(0, s === 'stats' ? showY : hideY, panelZ);
+		this.lbEntity.object3D!.position.set(0, s === 'leaderboard' ? showY : hideY, panelZ);
 
 		// HUD uses Follower, so toggle visible
 		this.hudEntity.object3D!.visible = s === 'playing';
@@ -1197,6 +1423,7 @@ export class GameSystem extends createSystem({
 			this.clearShots();
 			this.clearPowerUps(); // R4
 			this.removeWaveModifier(); // R4
+			this.clearWarningArrows(); // R5
 			this.applyModeTheme('arcade'); // R3: restore default theme
 			stopMusic(); // R3: stop generative music
 		}
@@ -1252,6 +1479,11 @@ export class GameSystem extends createSystem({
 		// R4: Reset modifier
 		this.removeWaveModifier();
 
+		// R5: Reset boss state
+		this.bossSpawnedThisWave = false;
+		this.bossDefeatedThisWave = false;
+		this.clearWarningArrows();
+
 		this.showState('playing');
 		this.beginWave();
 	}
@@ -1267,6 +1499,14 @@ export class GameSystem extends createSystem({
 
 		// R3: Reset split tracker per wave
 		this.splitSaveTracker.clear();
+
+		// R5: Reset boss state per wave
+		this.bossSpawnedThisWave = false;
+		this.bossDefeatedThisWave = false;
+		this.clearWarningArrows();
+
+		// R5: Wave start flash
+		this.triggerFlash(0x00ccff, 0.15, 0.3);
 
 		// R4: Remove previous modifier, maybe apply new one
 		this.removeWaveModifier();
@@ -1320,6 +1560,11 @@ export class GameSystem extends createSystem({
 			};
 			previewText += ' [' + modNames[this.currentModifier] + ']';
 		}
+		// R5: Boss wave indicator
+		if (this.mode === 'arcade' && w % 5 === 0 && w > 0) {
+			previewText = 'BOSS INCOMING! WAVE ' + w;
+			this.wavePreviewTimer = 2.5;
+		}
 		if (this.hudDoc) {
 			this.setTxt(this.hudDoc, 'status', previewText);
 		}
@@ -1369,6 +1614,7 @@ export class GameSystem extends createSystem({
 	endGame() {
 		this.waveActive = false;
 		this.clearShots();
+		this.clearWarningArrows(); // R5
 
 		// Update save data
 		this.saveData.gamesPlayed++;
@@ -1379,6 +1625,27 @@ export class GameSystem extends createSystem({
 		if (this.score > this.saveData.bestScore) this.saveData.bestScore = this.score;
 		if (this.bestCombo > this.saveData.bestStreak) this.saveData.bestStreak = this.bestCombo;
 		this.saveData.playTimeMs += performance.now() - this.gameStartTime;
+
+		// R6: Record leaderboard entry
+		this.recordLeaderboard();
+
+		// R5: Update per-mode stats
+		if (!this.saveData.modeStats) {
+			this.saveData.modeStats = {
+				arcade: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+				challenge: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+				training: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+				timeattack: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+			};
+		}
+		const ms = this.saveData.modeStats[this.mode];
+		if (ms) {
+			ms.gamesPlayed++;
+			if (this.score > ms.bestScore) ms.bestScore = this.score;
+			if (this.wave > ms.bestWave) ms.bestWave = this.wave;
+			ms.totalSaves += this.totalSaves;
+		}
+
 		this.persistSave();
 
 		// Show game over
@@ -1391,10 +1658,27 @@ export class GameSystem extends createSystem({
 			const total = this.totalSaves + this.totalGoals;
 			this.setTxt(this.gameOverDoc, 'go-rate', total > 0 ? Math.round(this.totalSaves / total * 100) + '%' : '0%');
 			const isRecord = this.score >= this.saveData.bestScore;
-			this.setTxt(this.gameOverDoc, 'go-record', isRecord ? 'NEW RECORD!' : '');
+
+			// R5: Grade system
+			const grade = this.getGrade();
+			const gradeColor = this.getGradeColor(grade);
+			const tip = this.getGradeTip();
+			let recordText = 'GRADE: ' + grade;
+			if (isRecord) recordText = 'NEW RECORD! GRADE: ' + grade;
+			this.setTxt(this.gameOverDoc, 'go-record', recordText);
+
+			// R5: Show tip
+			this.setTxt(this.gameOverDoc, 'go-tip', tip);
+
+			// R5: Set grade color
+			const gradeEl = this.gameOverDoc.getElementById('go-record') as UIKit.Text | undefined;
+			gradeEl?.setProperties({ color: gradeColor });
 		}
 		this.showState('game_over');
 		playSfx('gameover');
+
+		// R5: Game over flash
+		this.triggerFlash(0xff4444, 0.3, 0.4);
 	}
 
 	// ── Shots ──
@@ -1508,6 +1792,8 @@ export class GameSystem extends createSystem({
 			spawnZ: pos.z,
 			splitId: 0,
 			approachSoundPlayed: false,
+			hitsRemaining: 1,
+			isBoss: false,
 		};
 
 		this.shots.push(shot);
@@ -1565,6 +1851,7 @@ export class GameSystem extends createSystem({
 				splitDone: true, phantomTimer: 0, visible: true,
 				curvePhase: 0, curveAmplitude: 0, spawnZ: pos.z,
 				splitId: 0, approachSoundPlayed: false,
+				hitsRemaining: 1, isBoss: false,
 			});
 		}
 
@@ -1602,6 +1889,7 @@ export class GameSystem extends createSystem({
 				splitDone: true, phantomTimer: 0, visible: true,
 				curvePhase: 0, curveAmplitude: 0, spawnZ: pos.z,
 				splitId: currentSplitId, approachSoundPlayed: false,
+				hitsRemaining: 1, isBoss: false,
 			});
 		}
 		playSfx('split');
@@ -1661,6 +1949,30 @@ export class GameSystem extends createSystem({
 	}
 
 	onSave(shot: Shot, isCatch: boolean) {
+		// R5: Boss hit logic — if boss still has hits remaining, bounce it back
+		if (shot.isBoss && shot.hitsRemaining > 1) {
+			shot.hitsRemaining--;
+			// Change color to show damage: 3→green, 2→yellow, 1→red
+			const dmgColors = [0xff2200, 0xffaa00, 0x44ff00]; // 1, 2, 3 hits
+			const newColor = dmgColors[shot.hitsRemaining - 1] || 0xff2200;
+			const mat = shot.mesh.material as MeshStandardMaterial;
+			mat.color.set(newColor);
+			mat.emissive.set(newColor);
+			// Bounce back slightly
+			shot.vel.z = -Math.abs(shot.vel.z) * 0.4;
+			shot.vel.y = 2;
+			shot.pos.z -= 2;
+			playSfx('bosshit');
+			this.rumble('right', 0.8, 60);
+			this.rumble('left', 0.8, 60);
+			// Score partial hit
+			this.score += 100;
+			this.spawnScorePopup(shot.pos, '+100', '#ffaa00');
+			if (this.particlesOn) this.spawnSaveParticles(shot.pos, newColor);
+			this.updateHud();
+			return;
+		}
+
 		shot.blocked = true;
 		shot.alive = false;
 		this.scene.remove(shot.mesh);
@@ -1692,8 +2004,20 @@ export class GameSystem extends createSystem({
 		let earnMulti = 1;
 		if (this.activePowerUp === 'double_points') earnMulti = 2;
 
+		// R5: Boss gives 500 base
+		if (shot.isBoss) base = 500;
+
 		const earned = base * multi * earnMulti;
 		this.score += earned;
+
+		// R5: Boss defeated effects
+		if (shot.isBoss) {
+			this.bossDefeatedThisWave = true;
+			playSfx('bossdefeat');
+			this.triggerFlash(0xffffff, 0.4, 0.5);
+			if (this.hudDoc) this.setTxt(this.hudDoc, 'status', 'BOSS DEFEATED!');
+			this.wavePreviewTimer = 2.0; // show for 2s
+		}
 
 		// R4: DDA tracking (arcade only)
 		if (this.mode === 'arcade') {
@@ -1840,6 +2164,8 @@ export class GameSystem extends createSystem({
 		this.saveData.achievements[idx] = true;
 		this.persistSave();
 		playSfx('achieve');
+		// R5: Achievement unlock flash
+		this.triggerFlash(0xffcc00, 0.25, 0.4);
 	}
 
 	// ── R4: Power-up system ──
@@ -1939,6 +2265,9 @@ export class GameSystem extends createSystem({
 				double_points: 0xffcc00, magnet: 0xff44cc,
 			};
 			this.spawnSaveParticles(pu.mesh.position, colors[pu.type]);
+
+			// R5: Power-up collect flash
+			this.triggerFlash(colors[pu.type], 0.2, 0.3);
 		}
 	}
 
@@ -2116,6 +2445,185 @@ export class GameSystem extends createSystem({
 		}
 	}
 
+	// ── R5: Grade system ──
+	getGrade(): string {
+		const total = this.totalSaves + this.totalGoals;
+		const saveRate = total > 0 ? this.totalSaves / total : 0;
+		const gradeScore = saveRate * 50 + Math.min(this.bestCombo, 20) * 1.5 + Math.min(this.wave, 30);
+		if (gradeScore >= 90) return 'S';
+		if (gradeScore >= 75) return 'A';
+		if (gradeScore >= 60) return 'B';
+		if (gradeScore >= 45) return 'C';
+		if (gradeScore >= 30) return 'D';
+		return 'F';
+	}
+
+	getGradeColor(grade: string): string {
+		switch (grade) {
+			case 'S': return '#ffcc00';
+			case 'A': return '#44ff44';
+			case 'B': return '#00ccff';
+			case 'C': return '#ffdd44';
+			case 'D': return '#ff8844';
+			case 'F': return '#ff4444';
+			default: return '#aaaaaa';
+		}
+	}
+
+	getGradeTip(): string {
+		const total = this.totalSaves + this.totalGoals;
+		const saveRate = total > 0 ? this.totalSaves / total : 0;
+		if (this.totalCatches < 3) return 'Try holding grip to catch for bonus points!';
+		if (saveRate < 0.5) return 'Focus on positioning - stay centered between shots';
+		if (this.bestCombo < 5) return 'Build combos by blocking consecutive shots';
+		if (this.wave < 5) return 'Watch for phantom shots - they vanish mid-flight!';
+		if (saveRate > 0.8 && this.bestCombo > 10) return 'Amazing reflexes! Try Hard difficulty';
+		return 'Use Q/E to dive for hard-to-reach shots!';
+	}
+
+	// ── R5: Gauntlet color ──
+	applyGauntletColor() {
+		const hex = this.gauntletColorMap[this.gauntletColor] || 0x00ccff;
+		(this.gauntletL.material as MeshStandardMaterial).color.set(hex);
+		(this.gauntletL.material as MeshStandardMaterial).emissive.set(hex);
+		(this.gauntletR.material as MeshStandardMaterial).color.set(hex);
+		(this.gauntletR.material as MeshStandardMaterial).emissive.set(hex);
+
+		// Update shield discs
+		(this.shieldL.material as MeshBasicMaterial).color.set(hex);
+		(this.shieldR.material as MeshBasicMaterial).color.set(hex);
+
+		// Update gauntlet rings
+		for (const g of [this.gauntletL, this.gauntletR]) {
+			for (const child of g.children) {
+				if (child instanceof Mesh && child !== this.shieldL && child !== this.shieldR
+					&& child !== this.comboRingL && child !== this.comboRingR) {
+					const m = child.material as MeshBasicMaterial;
+					if (m.color) m.color.set(hex);
+				}
+			}
+		}
+	}
+
+	// ── R5: Boss shot spawning ──
+	spawnBossShot() {
+		const dm = DIFF_MULT[this.difficulty];
+		const speed = 5 * dm;
+		const radius = 0.5;
+		const color = 0xff4400;
+
+		const targetX = (Math.random() - 0.5) * (GOAL_WIDTH - 1);
+		const targetY = 0.5 + Math.random() * (GOAL_HEIGHT - 1);
+		const target = new Vector3(targetX, targetY, GOAL_Z);
+
+		const pos = new Vector3(0, 2, SPAWN_Z);
+		const dir = target.clone().sub(pos).normalize();
+		const vel = dir.multiplyScalar(speed);
+
+		const geo = new SphereGeometry(radius, 16, 12);
+		const mat = new MeshStandardMaterial({
+			color, emissive: color, emissiveIntensity: 2.0,
+			transparent: true, opacity: 0.95,
+		});
+		const mesh = new Mesh(geo, mat);
+		mesh.position.copy(pos);
+		this.scene.add(mesh);
+
+		// Bigger trail for boss
+		const trail = new Group();
+		for (let i = 0; i < 8; i++) {
+			const tGeo = new SphereGeometry(radius * (1 - i * 0.1), 8, 6);
+			const tMat = new MeshBasicMaterial({
+				color: 0xff6600, transparent: true, opacity: 0.35 - i * 0.04,
+			});
+			trail.add(new Mesh(tGeo, tMat));
+		}
+		this.scene.add(trail);
+
+		this.shots.push({
+			mesh, trail, type: 'standard', pos: pos.clone(), vel: vel.clone(),
+			target, speed, alive: true, blocked: false,
+			splitDone: true, phantomTimer: 0, visible: true,
+			curvePhase: 0, curveAmplitude: 0, spawnZ: pos.z,
+			splitId: 0, approachSoundPlayed: false,
+			hitsRemaining: 3, isBoss: true,
+		});
+
+		this.bossSpawnedThisWave = true;
+		playSfx('launch');
+	}
+
+	// ── R5: Warning arrows ──
+	updateWarningArrows() {
+		// Only in easy/normal, not training
+		if (this.difficulty === 'hard' || this.mode === 'training') {
+			this.clearWarningArrows();
+			return;
+		}
+
+		// Remove arrows for dead/blocked shots
+		for (let i = this.warningArrows.length - 1; i >= 0; i--) {
+			const wa = this.warningArrows[i];
+			if (!wa.shotRef.alive || wa.shotRef.blocked || wa.shotRef.pos.z > -5) {
+				this.scene.remove(wa.mesh);
+				this.warningArrows.splice(i, 1);
+			}
+		}
+
+		// Create/update arrows for active shots beyond z=-10
+		for (const s of this.shots) {
+			if (!s.alive || s.blocked || s.pos.z > -5) continue;
+			if (s.pos.z > -10) continue; // too close for warning
+
+			// Check if arrow exists for this shot
+			const existing = this.warningArrows.find(wa => wa.shotRef === s);
+			if (existing) {
+				// Update position and scale
+				existing.mesh.position.set(s.target.x, s.target.y, GOAL_Z - 0.1);
+				const progress = Math.max(0, Math.min(1, (s.pos.z - SPAWN_Z) / (-5 - SPAWN_Z)));
+				const arrowScale = 0.3 + progress * 0.7;
+				existing.mesh.scale.set(arrowScale, arrowScale, arrowScale);
+				// Pulse opacity
+				const mat = existing.mesh.material as MeshBasicMaterial;
+				mat.opacity = 0.2 + Math.sin(performance.now() * 0.005) * 0.15;
+			} else {
+				// Create new arrow
+				let arrowColor = 0x00ffcc;
+				if (s.type === 'curve') arrowColor = 0xffaa00;
+				else if (s.type === 'power') arrowColor = 0xff4444;
+				else if (s.type === 'split') arrowColor = 0xcc44ff;
+				else if (s.type === 'phantom') arrowColor = 0x44ccff;
+				if (s.isBoss) arrowColor = 0xff4400;
+
+				// Triangle geometry (3 vertices)
+				const verts = new Float32Array([
+					0, 0.12, 0,
+					-0.08, -0.06, 0,
+					0.08, -0.06, 0,
+				]);
+				const geo = new BufferGeometry();
+				geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
+				geo.computeVertexNormals();
+				const mat = new MeshBasicMaterial({
+					color: arrowColor, transparent: true, opacity: 0.3,
+					side: DoubleSide, depthWrite: false,
+				});
+				const mesh = new Mesh(geo, mat);
+				mesh.position.set(s.target.x, s.target.y, GOAL_Z - 0.1);
+				mesh.scale.set(0.3, 0.3, 0.3);
+				this.scene.add(mesh);
+				this.warningArrows.push({ mesh, shotRef: s });
+			}
+		}
+	}
+
+	clearWarningArrows() {
+		for (const wa of this.warningArrows) {
+			this.scene.remove(wa.mesh);
+		}
+		this.warningArrows = [];
+	}
+
 	// ── Update ──
 	update(delta: number, _time: number) {
 		// R2: Orbit spheres animate even when not playing (ambient decoration)
@@ -2174,6 +2682,22 @@ export class GameSystem extends createSystem({
 		// R4: Combo visual rings
 		this.updateComboRings(_time, dt);
 
+		// R5: Screen flash fade
+		if (this.flashTimer > 0) {
+			this.flashTimer -= dt;
+			const fmat = this.flashMesh.material as MeshBasicMaterial;
+			if (this.flashTimer <= 0) {
+				fmat.opacity = 0;
+				this.flashMesh.visible = false;
+				this.flashTimer = 0;
+			} else {
+				fmat.opacity = fmat.opacity * (this.flashTimer / (this.flashTimer + dt));
+			}
+		}
+
+		// R5: Warning arrows
+		this.updateWarningArrows();
+
 		// R4: Modifier display timer
 		if (this.modifierDisplayTimer > 0) {
 			this.modifierDisplayTimer -= dt;
@@ -2219,7 +2743,12 @@ export class GameSystem extends createSystem({
 		// Shot spawning
 		this.shotTimer -= dt;
 		if (this.shotTimer <= 0 && this.waveActive) {
-			if (this.mode === 'timeattack' || this.waveShotsLaunched < this.waveShots) {
+			// R5: Boss wave — spawn boss first on every 5th wave (arcade)
+			if (this.mode === 'arcade' && this.wave % 5 === 0 && this.wave > 0
+				&& !this.bossSpawnedThisWave && this.waveShotsLaunched === 0) {
+				this.spawnBossShot();
+				this.shotTimer = this.shotInterval * 2; // extra delay after boss
+			} else if (this.mode === 'timeattack' || this.waveShotsLaunched < this.waveShots) {
 				this.spawnShot();
 				this.shotTimer = this.shotInterval;
 			}
@@ -2281,6 +2810,19 @@ export class GameSystem extends createSystem({
 			if (!s.approachSoundPlayed && s.pos.z > -5 && s.alive) {
 				s.approachSoundPlayed = true;
 				playApproachSfx(s.type);
+			}
+
+			// R5: Boss shot re-approach after bounce
+			if (s.isBoss && s.vel.z < 0 && s.pos.z < -3) {
+				// Boss was bounced back, re-target the goal
+				const retarget = new Vector3(
+					(Math.random() - 0.5) * (GOAL_WIDTH - 1),
+					0.5 + Math.random() * (GOAL_HEIGHT - 1),
+					GOAL_Z,
+				);
+				const dir = retarget.clone().sub(s.pos).normalize();
+				s.vel.copy(dir.multiplyScalar(s.speed));
+				s.target.copy(retarget);
 			}
 
 			// Update trail
@@ -2556,13 +3098,22 @@ export class GameSystem extends createSystem({
 	}
 
 	updateBrowserGauntlets() {
-		// In browser mode (no XR grip), move gauntlets with mouse
+		// In browser mode (no XR grip), move gauntlets with mouse + keyboard
 		const rightGrip = this.w.playerSpaceEntities?.gripSpaces?.right?.object3D;
 		if (rightGrip) return; // XR mode, handled separately
 
-		// Use raycaster from camera
-		const canvas = this.w.renderer.domElement;
-		if (!canvas) return;
+		// R6: Add mouse listener once
+		if (!this.mouseListenerAdded && this.mouseAimEnabled) {
+			const canvas = this.w.renderer.domElement;
+			if (canvas) {
+				canvas.addEventListener('mousemove', (ev: MouseEvent) => {
+					const rect = canvas.getBoundingClientRect();
+					this.mouseNormX = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+					this.mouseNormY = 1 - ((ev.clientY - rect.top) / rect.height);
+				});
+				this.mouseListenerAdded = true;
+			}
+		}
 
 		// Keyboard controls
 		const kb = this.w.input.keyboard;
@@ -2571,6 +3122,25 @@ export class GameSystem extends createSystem({
 		// R4: Mirror modifier inverts left/right
 		const mirrorMult = this.currentModifier === 'mirror' ? -1 : 1;
 
+		// R6: Mouse-aim — blend mouse position with keyboard for gauntlet position
+		if (this.mouseAimEnabled && this.state === 'playing') {
+			const hw = GOAL_WIDTH / 2 + 0.5;
+			const targetX = this.mouseNormX * (hw + 0.5);
+			const targetY = 0.2 + this.mouseNormY * (GOAL_HEIGHT + 0.3);
+
+			// Smooth interpolation toward mouse position
+			const lerp = 0.12;
+			const centerX = (this.gauntletPosL.x + this.gauntletPosR.x) / 2;
+			const newCenterX = centerX + (targetX - centerX) * lerp;
+			const newY = this.gauntletPosL.y + (targetY - this.gauntletPosL.y) * lerp;
+
+			this.gauntletPosL.x = newCenterX - 0.3;
+			this.gauntletPosR.x = newCenterX + 0.3;
+			this.gauntletPosL.y = newY;
+			this.gauntletPosR.y = newY;
+		}
+
+		// Keyboard overrides
 		if (kb.getKeyPressed('KeyA') || kb.getKeyPressed('ArrowLeft')) {
 			this.gauntletPosL.x -= moveSpeed * 0.016 * mirrorMult;
 			this.gauntletPosR.x -= moveSpeed * 0.016 * mirrorMult;

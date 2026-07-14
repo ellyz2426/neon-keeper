@@ -9,7 +9,7 @@
   borderColor="#aa88ff"
   borderWidth="2"
   width="400"
-  height="440"
+  height="600"
 >
   <text fontSize="24" color="#aa88ff" fontWeight="bold">CAREER STATS</text>
 
@@ -49,6 +49,26 @@
     <container flexDirection="row" justifyContent="space-between" padding="4">
       <text fontSize="14" color="#558899">Play Time</text>
       <text name="st-time" fontSize="14" color="#446688">0m</text>
+    </container>
+  </container>
+
+  <text fontSize="16" color="#558899" fontWeight="bold" marginTop="6">MODE BESTS</text>
+  <container flexDirection="column" gap="4" width="320" marginTop="2">
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="12" color="#00ffcc">Arcade</text>
+      <text name="st-arcade-best" fontSize="12" color="#00ffcc">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="12" color="#ffaa00">Challenge</text>
+      <text name="st-challenge-best" fontSize="12" color="#ffaa00">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="12" color="#44cc44">Training</text>
+      <text name="st-training-best" fontSize="12" color="#44cc44">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="12" color="#cc44ff">Time Attack</text>
+      <text name="st-timeattack-best" fontSize="12" color="#cc44ff">0</text>
     </container>
   </container>
 

@@ -9,7 +9,7 @@
   borderColor="#00ccff"
   borderWidth="2"
   width="400"
-  height="480"
+  height="540"
 >
   <text fontSize="26" color="#00ccff" fontWeight="bold">SETTINGS</text>
 
@@ -97,6 +97,23 @@
         width="100"
         textAlign="center"
       >ALL</text>
+    </container>
+
+    <container flexDirection="row" justifyContent="space-between" alignItems="center">
+      <text fontSize="14" color="#558899">Gauntlet</text>
+      <text
+        name="set-gauntlet"
+        fontSize="14"
+        color="#00ccff"
+        backgroundColor="#001a2a"
+        padding="6"
+        borderRadius="4"
+        cursor="pointer"
+        borderColor="#00ccff"
+        borderWidth="1"
+        width="100"
+        textAlign="center"
+      >Cyan</text>
     </container>
   </container>
 

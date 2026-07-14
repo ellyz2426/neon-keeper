@@ -1,0 +1,78 @@
+<container
+  flexDirection="column"
+  alignItems="center"
+  gap="6"
+  padding="16"
+  backgroundColor="#000a15ee"
+  borderRadius="14"
+  borderColor="#00ffcc"
+  borderWidth="2"
+  width="440"
+  height="580"
+>
+  <text fontSize="24" color="#00ffcc" fontWeight="bold">LEADERBOARD</text>
+
+  <container flexDirection="row" gap="8" marginTop="4">
+    <text name="lb-tab-arcade" fontSize="12" color="#00ffcc" backgroundColor="#001a2a" padding="6" borderRadius="4" cursor="pointer" borderColor="#00ffcc" borderWidth="1">ARCADE</text>
+    <text name="lb-tab-challenge" fontSize="12" color="#ffaa00" backgroundColor="#1a1200" padding="6" borderRadius="4" cursor="pointer" borderColor="#ffaa00" borderWidth="1">CHALLENGE</text>
+    <text name="lb-tab-timeattack" fontSize="12" color="#cc44ff" backgroundColor="#1a0020" padding="6" borderRadius="4" cursor="pointer" borderColor="#cc44ff" borderWidth="1">TIME ATK</text>
+  </container>
+
+  <text name="lb-mode-title" fontSize="16" color="#00ffcc" fontWeight="bold" marginTop="4">ARCADE</text>
+
+  <container flexDirection="column" gap="2" width="400" marginTop="4">
+    <container flexDirection="row" justifyContent="space-between" padding="4" backgroundColor="#001822" borderRadius="3">
+      <text fontSize="11" color="#446688" width="30">#</text>
+      <text fontSize="11" color="#446688" width="100">SCORE</text>
+      <text fontSize="11" color="#446688" width="60">WAVE</text>
+      <text fontSize="11" color="#446688" width="80">GRADE</text>
+      <text fontSize="11" color="#446688" width="80">DATE</text>
+    </container>
+    <container name="lb-row-0" flexDirection="row" justifyContent="space-between" padding="4" backgroundColor="#050a10" borderRadius="3">
+      <text name="lb-rank-0" fontSize="12" color="#ffcc00" width="30">1</text>
+      <text name="lb-score-0" fontSize="12" color="#00ffcc" width="100">---</text>
+      <text name="lb-wave-0" fontSize="12" color="#ffaa00" width="60">--</text>
+      <text name="lb-grade-0" fontSize="12" color="#558899" width="80">--</text>
+      <text name="lb-date-0" fontSize="10" color="#335566" width="80">--</text>
+    </container>
+    <container name="lb-row-1" flexDirection="row" justifyContent="space-between" padding="4" backgroundColor="#050a10" borderRadius="3">
+      <text name="lb-rank-1" fontSize="12" color="#cccccc" width="30">2</text>
+      <text name="lb-score-1" fontSize="12" color="#00ffcc" width="100">---</text>
+      <text name="lb-wave-1" fontSize="12" color="#ffaa00" width="60">--</text>
+      <text name="lb-grade-1" fontSize="12" color="#558899" width="80">--</text>
+      <text name="lb-date-1" fontSize="10" color="#335566" width="80">--</text>
+    </container>
+    <container name="lb-row-2" flexDirection="row" justifyContent="space-between" padding="4" backgroundColor="#050a10" borderRadius="3">
+      <text name="lb-rank-2" fontSize="12" color="#cc8844" width="30">3</text>
+      <text name="lb-score-2" fontSize="12" color="#00ffcc" width="100">---</text>
+      <text name="lb-wave-2" fontSize="12" color="#ffaa00" width="60">--</text>
+      <text name="lb-grade-2" fontSize="12" color="#558899" width="80">--</text>
+      <text name="lb-date-2" fontSize="10" color="#335566" width="80">--</text>
+    </container>
+    <container name="lb-row-3" flexDirection="row" justifyContent="space-between" padding="4" backgroundColor="#050a10" borderRadius="3">
+      <text name="lb-rank-3" fontSize="12" color="#558899" width="30">4</text>
+      <text name="lb-score-3" fontSize="12" color="#00ffcc" width="100">---</text>
+      <text name="lb-wave-3" fontSize="12" color="#ffaa00" width="60">--</text>
+      <text name="lb-grade-3" fontSize="12" color="#558899" width="80">--</text>
+      <text name="lb-date-3" fontSize="10" color="#335566" width="80">--</text>
+    </container>
+    <container name="lb-row-4" flexDirection="row" justifyContent="space-between" padding="4" backgroundColor="#050a10" borderRadius="3">
+      <text name="lb-rank-4" fontSize="12" color="#558899" width="30">5</text>
+      <text name="lb-score-4" fontSize="12" color="#00ffcc" width="100">---</text>
+      <text name="lb-wave-4" fontSize="12" color="#ffaa00" width="60">--</text>
+      <text name="lb-grade-4" fontSize="12" color="#558899" width="80">--</text>
+      <text name="lb-date-4" fontSize="10" color="#335566" width="80">--</text>
+    </container>
+  </container>
+
+  <text name="lb-personal" fontSize="11" color="#446688" marginTop="6">Your best: ---</text>
+
+  <text
+    name="lb-back"
+    fontSize="14"
+    color="#446688"
+    marginTop="6"
+    cursor="pointer"
+    padding="6"
+  >&lt; BACK</text>
+</container>

@@ -9,7 +9,7 @@
   borderColor="#ff4444"
   borderWidth="2"
   width="400"
-  height="460"
+  height="500"
 >
   <text fontSize="30" color="#ff4444" fontWeight="bold">GAME OVER</text>
 
@@ -40,7 +40,8 @@
     </container>
   </container>
 
-  <text name="go-record" fontSize="12" color="#ffaa00" marginTop="4"></text>
+  <text name="go-record" fontSize="14" color="#ffaa00" fontWeight="bold" marginTop="4"></text>
+  <text name="go-tip" fontSize="10" color="#446688" marginTop="2"></text>
 
   <container flexDirection="row" gap="10" marginTop="8">
     <text
