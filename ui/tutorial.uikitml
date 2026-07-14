@@ -16,6 +16,8 @@
     <text fontSize="14" color="#00ffcc" fontWeight="bold">-- CONTROLS --</text>
     <text fontSize="11" color="#8899aa">Move gauntlets: WASD or Arrow keys</text>
     <text fontSize="11" color="#8899aa">Dive: Space / Q (left) / E (right)</text>
+    <text fontSize="11" color="#8899aa">Pause: P or Escape</text>
+    <text fontSize="11" color="#8899aa">Quick Restart: R (during play or game over)</text>
     <text fontSize="11" color="#8899aa">VR: Use controllers to block shots</text>
     <text fontSize="11" color="#8899aa">VR Grip: Hold grip to catch for bonus</text>
   </container>

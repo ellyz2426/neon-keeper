@@ -14,6 +14,7 @@ import {
 
 // ── Types ──
 type GameState = 'menu' | 'mode_select' | 'playing' | 'wave_complete' | 'game_over' | 'settings' | 'achievements' | 'stats' | 'leaderboard' | 'tutorial';
+type BossType = 'tank' | 'speed' | 'split';
 type GameMode = 'arcade' | 'challenge' | 'training' | 'timeattack' | 'endless' | 'daily';
 type ShotType = 'standard' | 'curve' | 'power' | 'split' | 'phantom' | 'multi';
 type Difficulty = 'easy' | 'normal' | 'hard';
@@ -90,6 +91,9 @@ interface SaveData {
 	// R8: New fields
 	dailyBest: { date: string; score: number } | null;
 	arenaSkin: string;
+	// R10: New fields
+	colorBlindMode: boolean;
+	bestEndlessBlocked: number;
 }
 
 // ── Constants ──
@@ -872,6 +876,19 @@ export class GameSystem extends createSystem({
 	// ── R9: Per-skin music key ──
 	currentMusicSkin = '';
 
+	// ── R10: Pause system ──
+	paused = false;
+	pauseHintTimer = 0;
+
+	// ── R10: Color-blind accessibility ──
+	colorBlindMode = false;
+	shotLabels: { mesh: Mesh; shotRef: Shot }[] = [];
+
+	// ── R10: Endless survival milestones ──
+	endlessMilestones: number[] = [25, 50, 100, 200, 500];
+	endlessMilestoneNames: string[] = ['BRONZE SURVIVAL', 'SILVER SURVIVAL', 'GOLD SURVIVAL', 'DIAMOND SURVIVAL', 'LEGENDARY'];
+	endlessMilestonesHitThisGame: Set<number> = new Set();
+
 	// ── Save data ──
 	saveData!: SaveData;
 
@@ -931,6 +948,10 @@ export class GameSystem extends createSystem({
 				}
 				this.gauntletColor = this.saveData.gauntletColor;
 				this.arenaSkin = this.saveData.arenaSkin;
+				// R10: Migrate color-blind and endless milestones
+				if (this.saveData.colorBlindMode === undefined) this.saveData.colorBlindMode = false;
+				if (this.saveData.bestEndlessBlocked === undefined) this.saveData.bestEndlessBlocked = 0;
+				this.colorBlindMode = this.saveData.colorBlindMode;
 				return;
 			}
 		} catch { /* */ }
@@ -961,6 +982,9 @@ export class GameSystem extends createSystem({
 			// R8
 			dailyBest: null,
 			arenaSkin: 'Neon Classic',
+			// R10
+			colorBlindMode: false,
+			bestEndlessBlocked: 0,
 		};
 	}
 
@@ -1592,6 +1616,15 @@ export class GameSystem extends createSystem({
 			this.saveData.arenaSkin = this.arenaSkin;
 			this.persistSave();
 		});
+
+		// R10: Color-blind accessibility toggle
+		(d.getElementById('set-access') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			this.colorBlindMode = !this.colorBlindMode;
+			this.setTxt(d, 'set-access', this.colorBlindMode ? 'COLOR-BLIND' : 'OFF');
+			this.saveData.colorBlindMode = this.colorBlindMode;
+			this.persistSave();
+		});
 	}
 
 	bindAchievements() {
@@ -1735,6 +1768,29 @@ export class GameSystem extends createSystem({
 		const m = Math.floor(secs / 60);
 		const ss = String(secs % 60).padStart(2, '0');
 		this.setTxt(this.hudDoc, 'session-time', m + ':' + ss);
+
+		// R10: Show difficulty multiplier on HUD timer line
+		const diffMult = this.getDifficultyMultiplier();
+		if (diffMult !== 1.0) {
+			// Recompute the timer text with multiplier appended
+			let timerText = '';
+			if (this.mode === 'timeattack') timerText = Math.ceil(this.timeLeft) + 's';
+			else if (this.mode === 'challenge') timerText = 'Challenge ' + this.challengeLevel + '/10';
+			else if (this.mode === 'daily') timerText = 'DAILY ' + getTodayDateStr();
+			else if (this.mode === 'endless') timerText = 'Endless W' + this.endlessInternalWave;
+			else if (this.mode === 'training') timerText = 'Training Mode';
+			else timerText = '';
+			timerText += ' x' + diffMult;
+			this.setTxt(this.hudDoc, 'timer', timerText);
+		}
+
+		// R10: Show endless milestone tier on HUD
+		if (this.mode === 'endless') {
+			const tier = this.getEndlessMilestoneTier();
+			if (tier) {
+				this.setTxt(this.hudDoc, 'shots-left', 'BLOCKED: ' + this.endlessShotsBlocked + ' [' + tier + ']');
+			}
+		}
 	}
 
 	refreshAchievements() {
@@ -1870,6 +1926,8 @@ export class GameSystem extends createSystem({
 		// R8: Update arena skin label on settings show
 		if (s === 'settings' && this.settingsDoc) {
 			this.setTxt(this.settingsDoc, 'set-arena', this.arenaSkin);
+			// R10: Update color-blind toggle text
+			this.setTxt(this.settingsDoc, 'set-access', this.colorBlindMode ? 'COLOR-BLIND' : 'OFF');
 			// R8: Update difficulty lock
 			this.refreshDifficultyLock();
 		}
@@ -1959,6 +2017,16 @@ export class GameSystem extends createSystem({
 		this.sessionElapsed = 0;
 		this.goalSlowdownActive = false;
 		this.goalSlowdownTimer = 0;
+
+		// R10: Reset pause state
+		this.paused = false;
+		this.pauseHintTimer = 3.0; // Show "Press P to Pause" for 3 seconds
+
+		// R10: Reset endless milestones tracking
+		this.endlessMilestonesHitThisGame = new Set();
+
+		// R10: Clear shot labels
+		this.clearShotLabels();
 
 		// R4: Reset modifier
 		this.removeWaveModifier();
@@ -2070,7 +2138,10 @@ export class GameSystem extends createSystem({
 		}
 		// R5: Boss wave indicator
 		if (this.mode === 'arcade' && w % 5 === 0 && w > 0) {
-			previewText = 'BOSS INCOMING! WAVE ' + w;
+			// R10: Show boss type in preview
+			const bType = this.getBossType(w);
+			const bossNames: Record<BossType, string> = { tank: 'TANK', speed: 'SPEED', split: 'SPLIT' };
+			previewText = bossNames[bType] + ' BOSS INCOMING! WAVE ' + w;
 			this.wavePreviewTimer = 2.5;
 		}
 		if (this.hudDoc) {
@@ -2159,6 +2230,11 @@ export class GameSystem extends createSystem({
 			this.setTxt(this.scorecardDoc, 'sc-catches', String(this.waveCatches));
 			this.setTxt(this.scorecardDoc, 'sc-streak', String(this.bestCombo));
 			this.setTxt(this.scorecardDoc, 'sc-score', String(this.score));
+			// R10: Show difficulty multiplier on scorecard
+			const scDiffMult = this.getDifficultyMultiplier();
+			if (scDiffMult !== 1.0) {
+				this.setTxt(this.scorecardDoc, 'sc-score', this.score + ' (x' + scDiffMult + ')');
+			}
 		}
 		this.showState('wave_complete');
 	}
@@ -2194,6 +2270,14 @@ export class GameSystem extends createSystem({
 				this.saveData.dailyBest = { date: today, score: this.score };
 			}
 		}
+
+		// R10: Track best endless blocked
+		if (this.mode === 'endless' && this.endlessShotsBlocked > this.saveData.bestEndlessBlocked) {
+			this.saveData.bestEndlessBlocked = this.endlessShotsBlocked;
+		}
+
+		// R10: Clear shot labels on game end
+		this.clearShotLabels();
 
 		// R5: Update per-mode stats
 		if (!this.saveData.modeStats) {
@@ -2245,6 +2329,11 @@ export class GameSystem extends createSystem({
 			const tip = this.getGradeTip();
 			let recordText = 'GRADE: ' + grade;
 			if (isRecord) recordText = 'NEW RECORD! GRADE: ' + grade;
+			// R10: Show difficulty multiplier on game-over
+			const diffMult = this.getDifficultyMultiplier();
+			if (diffMult !== 1.0) {
+				recordText += ' (x' + diffMult + ')';
+			}
 			this.setTxt(this.gameOverDoc, 'go-record', recordText);
 
 			// R5: Show tip
@@ -2373,11 +2462,8 @@ export class GameSystem extends createSystem({
 			radius *= 2.0;
 		}
 
-		let color = 0x00ffcc;
-		if (type === 'curve') color = 0xffaa00;
-		else if (type === 'power') color = 0xff4444;
-		else if (type === 'split') color = 0xcc44ff;
-		else if (type === 'phantom') color = 0x44ccff;
+		// R10: Color-blind mode overrides colors
+		let color = this.getColorBlindShotColor(type!);
 
 		// R6: Visual shot differentiation — different geometry per shot type
 		let geo: SphereGeometry | BoxGeometry | CylinderGeometry;
@@ -2480,6 +2566,16 @@ export class GameSystem extends createSystem({
 		this.shots.push(shot);
 		this.waveShotsLaunched++;
 		this.lastShotSpawnTime = performance.now(); // R9: Track spawn time for reaction tracking
+
+		// R10: Color-blind mode — attach text label to shot
+		if (this.colorBlindMode) {
+			const abbrev = this.getShotTypeAbbrev(type!, false);
+			const lbl = this.makeSmallLabel(abbrev);
+			lbl.position.set(shot.pos.x, shot.pos.y + 0.3, shot.pos.z);
+			this.scene.add(lbl);
+			this.shotLabels.push({ mesh: lbl, shotRef: shot });
+		}
+
 		playSfx('launch');
 
 		// R7: Training mode trajectory preview
@@ -2625,6 +2721,8 @@ export class GameSystem extends createSystem({
 		this.shots = [];
 		// R7: Also clear training paths
 		this.clearTrainingPaths();
+		// R10: Clear color-blind shot labels
+		this.clearShotLabels();
 	}
 
 	// ── Collision ──
@@ -2682,6 +2780,46 @@ export class GameSystem extends createSystem({
 			const mat = shot.mesh.material as MeshStandardMaterial;
 			mat.color.set(newColor);
 			mat.emissive.set(newColor);
+
+			// R10: Split Boss — first hit spawns 3 standard child shots
+			const bType = this.getBossType(this.wave);
+			if (bType === 'split') {
+				for (let ci = 0; ci < 3; ci++) {
+					const childTarget = new Vector3(
+						(Math.random() - 0.5) * (GOAL_WIDTH - 0.6),
+						0.3 + Math.random() * (GOAL_HEIGHT - 0.6),
+						GOAL_Z,
+					);
+					const childPos = shot.pos.clone();
+					childPos.x += (ci - 1) * 0.4;
+					const childDir = childTarget.clone().sub(childPos).normalize();
+					const childSpeed = 8 * DIFF_MULT[this.difficulty];
+					const childVel = childDir.multiplyScalar(childSpeed);
+					const childGeo = new SphereGeometry(SHOT_RADIUS, 10, 8);
+					const childMat = new MeshStandardMaterial({
+						color: 0xaa22ff, emissive: 0xaa22ff, emissiveIntensity: 1.0,
+						transparent: true, opacity: 0.9,
+					});
+					const childMesh = new Mesh(childGeo, childMat);
+					childMesh.position.copy(childPos);
+					this.scene.add(childMesh);
+					const childTrail = new Group();
+					for (let ti = 0; ti < 3; ti++) {
+						const tg = new SphereGeometry(SHOT_RADIUS * (1 - ti * 0.2), 6, 4);
+						const tm = new MeshBasicMaterial({ color: 0xaa22ff, transparent: true, opacity: 0.2 - ti * 0.05 });
+						childTrail.add(new Mesh(tg, tm));
+					}
+					this.scene.add(childTrail);
+					this.shots.push({
+						mesh: childMesh, trail: childTrail, type: 'standard', pos: childPos.clone(),
+						vel: childVel, target: childTarget, speed: childSpeed,
+						alive: true, blocked: false, splitDone: true, phantomTimer: 0, visible: true,
+						curvePhase: 0, curveAmplitude: 0, spawnZ: childPos.z,
+						splitId: 0, approachSoundPlayed: false, hitsRemaining: 1, isBoss: false,
+					});
+				}
+			}
+
 			// Bounce back slightly
 			shot.vel.z = -Math.abs(shot.vel.z) * 0.4;
 			shot.vel.y = 2;
@@ -2690,8 +2828,8 @@ export class GameSystem extends createSystem({
 			this.rumble('right', 0.8, 60);
 			this.rumble('left', 0.8, 60);
 			// Score partial hit
-			this.score += 100;
-			this.spawnScorePopup(shot.pos, '+100', '#ffaa00');
+			this.score += Math.round(100 * this.getDifficultyMultiplier());
+			this.spawnScorePopup(shot.pos, '+' + Math.round(100 * this.getDifficultyMultiplier()), '#ffaa00');
 			if (this.particlesOn) this.spawnSaveParticles(shot.pos, newColor);
 			this.updateHud();
 			return;
@@ -2757,7 +2895,7 @@ export class GameSystem extends createSystem({
 		// R5: Boss gives 500 base
 		if (shot.isBoss) base = 500;
 
-		const earned = base * multi * earnMulti;
+		const earned = Math.round(base * multi * earnMulti * this.getDifficultyMultiplier());
 		this.score += earned;
 
 		// R5: Boss defeated effects
@@ -2804,6 +2942,8 @@ export class GameSystem extends createSystem({
 			if (this.endlessShotsBlocked > 0 && this.endlessShotsBlocked % 30 === 0 && !this.bossSpawnedThisWave) {
 				this.spawnBossShot();
 			}
+			// R10: Check endless survival milestones
+			this.checkEndlessMilestone();
 		}
 
 		// Particles
@@ -3009,6 +3149,17 @@ export class GameSystem extends createSystem({
 		this.scene.add(mesh);
 
 		this.powerUps.push({ mesh, type: puType, pos: new Vector3(x, y, z), alive: true, timer: 8.0 });
+
+		// R10: Color-blind power-up label
+		if (this.colorBlindMode) {
+			const puLabels: Record<PowerUpType, string> = {
+				shield_expand: 'SHIELD', slow_mo: 'SLOW', double_points: '2x PTS', magnet: 'MAGNET',
+			};
+			const lbl = this.makeSmallLabel(puLabels[puType]);
+			lbl.position.set(x, y + 0.25, z);
+			mesh.userData.cbLabel = lbl;
+			this.scene.add(lbl);
+		}
 	}
 
 	updatePowerUps(dt: number, time: number) {
@@ -3040,12 +3191,19 @@ export class GameSystem extends createSystem({
 			if (pu.timer <= 0) {
 				pu.alive = false;
 				this.scene.remove(pu.mesh);
+				// R10: Remove color-blind label
+				if (pu.mesh.userData.cbLabel) this.scene.remove(pu.mesh.userData.cbLabel);
 				continue;
 			}
 
 			// Bob up/down and rotate
 			pu.mesh.position.y = pu.pos.y + Math.sin(time * 2) * 0.15;
 			pu.mesh.rotation.y += dt * 2;
+
+			// R10: Update color-blind label position
+			if (pu.mesh.userData.cbLabel) {
+				pu.mesh.userData.cbLabel.position.set(pu.mesh.position.x, pu.mesh.position.y + 0.25, pu.mesh.position.z);
+			}
 
 			// Pulse opacity
 			const mat = pu.mesh.material as MeshStandardMaterial;
@@ -3066,6 +3224,8 @@ export class GameSystem extends createSystem({
 	collectPowerUp(pu: PowerUp) {
 		pu.alive = false;
 		this.scene.remove(pu.mesh);
+		// R10: Remove color-blind label
+		if (pu.mesh.userData.cbLabel) this.scene.remove(pu.mesh.userData.cbLabel);
 		this.activePowerUp = pu.type;
 		this.powerUpTimer = 10.0;
 		playSfx('powerup');
@@ -3090,6 +3250,10 @@ export class GameSystem extends createSystem({
 	clearPowerUps() {
 		for (const pu of this.powerUps) {
 			this.scene.remove(pu.mesh);
+			// R10: Remove color-blind labels
+			if (pu.mesh.userData.cbLabel) {
+				this.scene.remove(pu.mesh.userData.cbLabel);
+			}
 		}
 		this.powerUps = [];
 		this.activePowerUp = null;
@@ -3297,6 +3461,135 @@ export class GameSystem extends createSystem({
 		return 'Use Q/E to dive for hard-to-reach shots!';
 	}
 
+	// ── R10: Difficulty score multiplier ──
+	getDifficultyMultiplier(): number {
+		if (this.difficulty === 'easy') return 0.5;
+		if (this.difficulty === 'hard') return 2.0;
+		return 1.0;
+	}
+
+	// ── R10: Boss type determination ──
+	getBossType(wave: number): BossType {
+		const cycle = wave % 20;
+		if (cycle === 0) return 'split'; // wave 20, 40, 60 ...
+		if (wave % 10 === 0) return 'speed'; // wave 10, 30, 50 ...
+		return 'tank'; // wave 5, 15, 25, 35 ...
+	}
+
+	// ── R10: Small text label for color-blind mode ──
+	makeSmallLabel(text: string): Mesh {
+		const canvas = document.createElement('canvas');
+		canvas.width = 128;
+		canvas.height = 48;
+		const ctx2 = canvas.getContext('2d')!;
+		ctx2.clearRect(0, 0, 128, 48);
+		ctx2.fillStyle = '#ffffff';
+		ctx2.font = 'bold 28px monospace';
+		ctx2.textAlign = 'center';
+		ctx2.textBaseline = 'middle';
+		ctx2.fillText(text, 64, 24);
+		const tex = new CanvasTexture(canvas);
+		const mat = new MeshBasicMaterial({ map: tex, transparent: true, depthTest: false });
+		const geo = new BoxGeometry(0.28, 0.12, 0.001);
+		const labelMesh = new Mesh(geo, mat);
+		return labelMesh;
+	}
+
+	// ── R10: Cleanup shot labels ──
+	clearShotLabels() {
+		for (const sl of this.shotLabels) {
+			this.scene.remove(sl.mesh);
+		}
+		this.shotLabels = [];
+	}
+
+	// ── R10: Update shot labels for color-blind mode ──
+	updateShotLabels() {
+		if (!this.colorBlindMode) return;
+		// Remove labels for dead shots
+		for (let i = this.shotLabels.length - 1; i >= 0; i--) {
+			if (!this.shotLabels[i].shotRef.alive) {
+				this.scene.remove(this.shotLabels[i].mesh);
+				this.shotLabels.splice(i, 1);
+			} else {
+				// Update position to track shot
+				const s = this.shotLabels[i].shotRef;
+				this.shotLabels[i].mesh.position.set(s.pos.x, s.pos.y + 0.3, s.pos.z);
+			}
+		}
+	}
+
+	// ── R10: Get color-blind friendly shot color ──
+	getColorBlindShotColor(type: ShotType): number {
+		if (!this.colorBlindMode) {
+			const normalColors: Record<ShotType, number> = {
+				standard: 0x00ffcc, curve: 0xffaa00, power: 0xff4444,
+				split: 0xcc44ff, phantom: 0x44ccff, multi: 0xff8800,
+			};
+			return normalColors[type] || 0x00ffcc;
+		}
+		// High-contrast color-blind palette
+		const cbColors: Record<ShotType, number> = {
+			standard: 0xffffff, curve: 0xffff00, power: 0xff2200,
+			split: 0xff00ff, phantom: 0x00ffff, multi: 0xff8800,
+		};
+		return cbColors[type] || 0xffffff;
+	}
+
+	// ── R10: Get shot type abbreviation ──
+	getShotTypeAbbrev(type: ShotType, isBoss: boolean): string {
+		if (isBoss) return 'BOSS';
+		const abbrevs: Record<ShotType, string> = {
+			standard: 'STD', curve: 'CRV', power: 'PWR',
+			split: 'SPL', phantom: 'PHN', multi: 'MLT',
+		};
+		return abbrevs[type] || 'STD';
+	}
+
+	// ── R10: Endless milestone check ──
+	checkEndlessMilestone() {
+		if (this.mode !== 'endless') return;
+		for (let i = 0; i < this.endlessMilestones.length; i++) {
+			const threshold = this.endlessMilestones[i];
+			if (this.endlessShotsBlocked >= threshold && !this.endlessMilestonesHitThisGame.has(threshold)) {
+				this.endlessMilestonesHitThisGame.add(threshold);
+				const name = this.endlessMilestoneNames[i];
+				// Celebration effects
+				playSfx('achieve');
+				if (this.hudDoc) {
+					this.setTxt(this.hudDoc, 'status', name);
+					this.wavePreviewTimer = 3.0;
+				}
+				// Escalating flash effects
+				const flashColors = [0xcc8844, 0xcccccc, 0xffcc00, 0x44ccff, 0xff4400];
+				const flashOpacity = [0.2, 0.25, 0.3, 0.35, 0.5];
+				this.triggerFlash(flashColors[i] || 0xffcc00, flashOpacity[i] || 0.3, 0.5);
+				// Extra particles for big milestones
+				if (threshold >= 100 && this.particlesOn) {
+					this.spawnSaveParticles(this.gauntletPosL, flashColors[i] || 0xffcc00);
+					this.spawnSaveParticles(this.gauntletPosR, flashColors[i] || 0xffcc00);
+				}
+				if (threshold >= 200 && this.particlesOn) {
+					for (let j = 0; j < 3; j++) {
+						const p = new Vector3((Math.random() - 0.5) * 3, 1 + Math.random() * 2, -3);
+						this.spawnSaveParticles(p, flashColors[i] || 0xffcc00);
+					}
+				}
+			}
+		}
+	}
+
+	// ── R10: Get current endless milestone tier name ──
+	getEndlessMilestoneTier(): string {
+		let tier = '';
+		for (let i = 0; i < this.endlessMilestones.length; i++) {
+			if (this.endlessShotsBlocked >= this.endlessMilestones[i]) {
+				tier = this.endlessMilestoneNames[i];
+			}
+		}
+		return tier;
+	}
+
 	// ── R5: Gauntlet color ──
 	applyGauntletColor() {
 		const hex = this.gauntletColorMap[this.gauntletColor] || 0x00ccff;
@@ -3324,9 +3617,35 @@ export class GameSystem extends createSystem({
 	// ── R5: Boss shot spawning ──
 	spawnBossShot() {
 		const dm = DIFF_MULT[this.difficulty];
-		const speed = 5 * dm;
-		const radius = 0.5;
-		const color = 0xff4400;
+		// R10: Boss variants based on wave
+		const bossType = this.getBossType(this.wave);
+
+		let speed: number;
+		let radius: number;
+		let color: number;
+		let hits: number;
+		let trailCount: number;
+
+		if (bossType === 'speed') {
+			speed = 12 * dm;
+			radius = 0.35;
+			color = 0x2288ff;
+			hits = 2;
+			trailCount = 12;
+		} else if (bossType === 'split') {
+			speed = 6 * dm;
+			radius = 0.4;
+			color = 0xaa22ff;
+			hits = 2;
+			trailCount = 8;
+		} else {
+			// Tank boss (default/original)
+			speed = 5 * dm;
+			radius = 0.5;
+			color = 0xcc2200;
+			hits = 3;
+			trailCount = 8;
+		}
 
 		const targetX = (Math.random() - 0.5) * (GOAL_WIDTH - 1);
 		const targetY = 0.5 + Math.random() * (GOAL_HEIGHT - 1);
@@ -3346,32 +3665,53 @@ export class GameSystem extends createSystem({
 		mesh.position.copy(pos);
 		// Add wireframe overlay for crystal effect
 		const edgesGeo = new EdgesGeometry(geo);
-		const edgeMat = new LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.8 });
+		const edgeColor = bossType === 'speed' ? 0x66bbff : bossType === 'split' ? 0xcc66ff : 0xffaa00;
+		const edgeMat = new LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 0.8 });
 		mesh.add(new LineSegments(edgesGeo, edgeMat));
 		this.scene.add(mesh);
 
-		// Bigger trail for boss
+		// Bigger trail for boss (speed boss gets more trail segments)
 		const trail = new Group();
-		for (let i = 0; i < 8; i++) {
-			const tGeo = new SphereGeometry(radius * (1 - i * 0.1), 8, 6);
+		const trailColor = bossType === 'speed' ? 0x4499ff : bossType === 'split' ? 0xbb44ff : 0xff6600;
+		for (let i = 0; i < trailCount; i++) {
+			const tGeo = new SphereGeometry(radius * (1 - i * (1 / trailCount)), 8, 6);
 			const tMat = new MeshBasicMaterial({
-				color: 0xff6600, transparent: true, opacity: 0.35 - i * 0.04,
+				color: trailColor, transparent: true, opacity: 0.35 - i * (0.3 / trailCount),
 			});
 			trail.add(new Mesh(tGeo, tMat));
 		}
 		this.scene.add(trail);
 
-		this.shots.push({
+		// R10: Color-blind label for boss
+		if (this.colorBlindMode) {
+			const bossLabel = bossType.toUpperCase();
+			const lbl = this.makeSmallLabel(bossLabel);
+			lbl.position.set(pos.x, pos.y + 0.5, pos.z);
+			this.scene.add(lbl);
+			this.shotLabels.push({ mesh: lbl, shotRef: { pos, alive: true } as Shot });
+		}
+
+		const shot: Shot = {
 			mesh, trail, type: 'standard', pos: pos.clone(), vel: vel.clone(),
 			target, speed, alive: true, blocked: false,
 			splitDone: true, phantomTimer: 0, visible: true,
 			curvePhase: 0, curveAmplitude: 0, spawnZ: pos.z,
 			splitId: 0, approachSoundPlayed: false,
-			hitsRemaining: 3, isBoss: true,
-		});
+			hitsRemaining: hits, isBoss: true,
+		};
 
+		this.shots.push(shot);
 		this.bossSpawnedThisWave = true;
+
+		// R10: Boss type label update
+		const bossLabels: Record<BossType, string> = { tank: 'TANK BOSS', speed: 'SPEED BOSS', split: 'SPLIT BOSS' };
 		playSfx('launch');
+
+		// Update boss incoming preview text
+		if (this.hudDoc) {
+			this.setTxt(this.hudDoc, 'status', bossLabels[bossType] + ' INCOMING!');
+			this.wavePreviewTimer = 2.5;
+		}
 	}
 
 	// ── R5: Warning arrows ──
@@ -3559,7 +3899,59 @@ export class GameSystem extends createSystem({
 			this.updateDemoShots(Math.min(delta, 0.05));
 		}
 
+		// R10: Quick restart from game-over or scorecard — check before state guard
+		if (this.state === 'game_over' || this.state === 'wave_complete') {
+			const kb = this.w.input.keyboard;
+			if (kb.getKeyDown('KeyR')) {
+				playSfx('click');
+				this.startGame(this.mode);
+				return;
+			}
+		}
+
 		if (this.state !== 'playing') return;
+
+		// R10: Pause/unpause toggle
+		{
+			const kb = this.w.input.keyboard;
+			if (kb.getKeyDown('KeyP') || kb.getKeyDown('Escape')) {
+				this.paused = !this.paused;
+				if (this.paused) {
+					playSfx('click');
+					if (this.hudDoc) {
+						this.setTxt(this.hudDoc, 'status', 'PAUSED - Press P to resume');
+					}
+					// Dim flash overlay
+					this.flashMesh.visible = true;
+					const fmat = this.flashMesh.material as MeshBasicMaterial;
+					fmat.color.set(0x000000);
+					fmat.opacity = 0.3;
+					this.flashTimer = 0; // Don't auto-fade the pause overlay
+				} else {
+					playSfx('click');
+					// Clear pause overlay
+					this.flashMesh.visible = false;
+					const fmat = this.flashMesh.material as MeshBasicMaterial;
+					fmat.opacity = 0;
+					if (this.hudDoc) {
+						this.setTxt(this.hudDoc, 'status', ' ');
+					}
+				}
+			}
+		}
+
+		// R10: If paused, skip all gameplay logic
+		if (this.paused) return;
+
+		// R10: Quick restart during gameplay (not while paused)
+		{
+			const kb = this.w.input.keyboard;
+			if (kb.getKeyDown('KeyR')) {
+				playSfx('click');
+				this.startGame(this.mode);
+				return;
+			}
+		}
 
 		// R9: Apply post-goal slowdown multiplier
 		let dt = Math.min(delta, 0.05); // cap
@@ -3575,6 +3967,22 @@ export class GameSystem extends createSystem({
 
 		// R9: Session elapsed tracker
 		this.sessionElapsed += dt;
+
+		// R10: Pause hint countdown
+		if (this.pauseHintTimer > 0) {
+			this.pauseHintTimer -= dt;
+			if (this.pauseHintTimer > 0 && this.hudDoc && this.wavePreviewTimer <= 0) {
+				this.setTxt(this.hudDoc, 'status', 'Press P to Pause');
+			} else if (this.pauseHintTimer <= 0) {
+				this.pauseHintTimer = 0;
+				if (this.hudDoc && this.wavePreviewTimer <= 0) {
+					this.setTxt(this.hudDoc, 'status', ' ');
+				}
+			}
+		}
+
+		// R10: Update color-blind shot labels
+		this.updateShotLabels();
 
 		// R2: Wave preview countdown
 		if (this.wavePreviewTimer > 0) {

@@ -50,6 +50,7 @@
 
   <text name="go-record" fontSize="14" color="#ffaa00" fontWeight="bold" marginTop="2"></text>
   <text name="go-tip" fontSize="10" color="#446688" marginTop="1"></text>
+  <text fontSize="9" color="#335566" marginTop="1">Press R for quick restart</text>
 
   <container flexDirection="column" gap="2" width="340" marginTop="3">
     <text fontSize="11" color="#558899" fontWeight="bold">SHOT BREAKDOWN</text>

@@ -61,4 +61,5 @@
       width="100"
     >MENU</text>
   </container>
+  <text fontSize="9" color="#335566" marginTop="2">Press R to restart</text>
 </container>
