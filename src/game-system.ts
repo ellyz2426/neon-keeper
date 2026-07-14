@@ -9,6 +9,7 @@ import {
 	BufferGeometry, Float32BufferAttribute,
 	EdgesGeometry, LineSegments, AdditiveBlending,
 	FogExp2,
+	CanvasTexture, DoubleSide,
 } from '@iwsdk/core';
 
 // ── Types ──
@@ -147,6 +148,14 @@ function playSfx(type: string, vol = 0.3) {
 			o.frequency.setValueAtTime(150, ctx.currentTime);
 			o.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1);
 			g.gain.setValueAtTime(vol * 0.6, ctx.currentTime);
+		} else if (type === 'multi') {
+			// Rapid staccato burst - three quick tones
+			o.type = 'square';
+			o.frequency.setValueAtTime(500, ctx.currentTime);
+			o.frequency.setValueAtTime(700, ctx.currentTime + 0.05);
+			o.frequency.setValueAtTime(900, ctx.currentTime + 0.1);
+			g.gain.setValueAtTime(vol * 0.5, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
 		} else {
 			o.type = 'sine';
 			o.frequency.setValueAtTime(440, ctx.currentTime);
@@ -180,6 +189,22 @@ function playAmbient() {
 		o.start();
 		o2.start();
 	} catch { /* */ }
+}
+
+// ── Score popup texture helper ──
+function makePopupTexture(text: string, color: string): CanvasTexture {
+	const canvas = document.createElement('canvas');
+	canvas.width = 256;
+	canvas.height = 128;
+	const ctx2d = canvas.getContext('2d')!;
+	ctx2d.clearRect(0, 0, 256, 128);
+	ctx2d.font = 'bold 64px monospace';
+	ctx2d.textAlign = 'center';
+	ctx2d.textBaseline = 'middle';
+	ctx2d.fillStyle = color;
+	ctx2d.fillText(text, 128, 64);
+	const tex = new CanvasTexture(canvas);
+	return tex;
 }
 
 // ── System ──
@@ -256,6 +281,26 @@ export class GameSystem extends createSystem({
 	particles: { mesh: Mesh; vel: Vector3; life: number }[] = [];
 	scorePopups: { mesh: Mesh; vel: Vector3; life: number }[] = [];
 
+	// ── R2: Goal flash ──
+	goalPosts: Mesh[] = [];
+	goalFlashTimer = 0;
+
+	// ── R2: Camera shake ──
+	cameraShakeTimer = 0;
+
+	// ── R2: Gauntlet shields ──
+	shieldL!: Mesh;
+	shieldR!: Mesh;
+
+	// ── R2: Orbiting accent spheres ──
+	orbitSpheres: { mesh: Mesh; light: PointLight; angle: number; speed: number; radius: number; height: number }[] = [];
+
+	// ── R2: Ambient floating motes ──
+	ambientMotes: { mesh: Mesh; vel: Vector3 }[] = [];
+
+	// ── R2: Wave preview ──
+	wavePreviewTimer = 0;
+
 	// ── Save data ──
 	saveData!: SaveData;
 
@@ -328,6 +373,18 @@ export class GameSystem extends createSystem({
 
 		// Arena walls (wire)
 		this.buildArena();
+
+		// R2: Beacon pillars
+		this.buildBeacons();
+
+		// R2: Neon floor ring
+		this.buildFloorRing();
+
+		// R2: Orbiting accent spheres
+		this.buildOrbitSpheres();
+
+		// R2: Ambient floating motes
+		this.buildAmbientMotes();
 	}
 
 	buildFloorGrid() {
@@ -352,20 +409,23 @@ export class GameSystem extends createSystem({
 		const crossGeo = new CylinderGeometry(0.06, 0.06, GOAL_WIDTH + 0.12, 8);
 
 		// Left post
-		const lp = new Mesh(postGeo, postMat);
+		const lp = new Mesh(postGeo, postMat.clone());
 		lp.position.set(-GOAL_WIDTH / 2, GOAL_HEIGHT / 2, GOAL_Z);
 		this.goalGroup.add(lp);
+		this.goalPosts.push(lp);
 
 		// Right post
-		const rp = new Mesh(postGeo, postMat);
+		const rp = new Mesh(postGeo, postMat.clone());
 		rp.position.set(GOAL_WIDTH / 2, GOAL_HEIGHT / 2, GOAL_Z);
 		this.goalGroup.add(rp);
+		this.goalPosts.push(rp);
 
 		// Crossbar
-		const cb = new Mesh(crossGeo, postMat);
+		const cb = new Mesh(crossGeo, postMat.clone());
 		cb.rotation.z = Math.PI / 2;
 		cb.position.set(0, GOAL_HEIGHT, GOAL_Z);
 		this.goalGroup.add(cb);
+		this.goalPosts.push(cb);
 
 		// Goal net (wire)
 		const netVerts: number[] = [];
@@ -419,6 +479,24 @@ export class GameSystem extends createSystem({
 			const ring = new Mesh(ringGeo, ringMat);
 			g.add(ring);
 		}
+
+		// R2: Energy shield discs
+		const shieldGeo = new CylinderGeometry(0.2, 0.2, 0.01, 20, 1, false);
+		const shieldMatL = new MeshBasicMaterial({
+			color: 0x00ccff, transparent: true, opacity: 0.15, side: DoubleSide,
+		});
+		this.shieldL = new Mesh(shieldGeo, shieldMatL);
+		this.shieldL.rotation.x = Math.PI / 2; // face forward
+		this.shieldL.position.set(0, 0, -0.1);
+		this.gauntletL.add(this.shieldL);
+
+		const shieldMatR = new MeshBasicMaterial({
+			color: 0x00ccff, transparent: true, opacity: 0.15, side: DoubleSide,
+		});
+		this.shieldR = new Mesh(shieldGeo, shieldMatR);
+		this.shieldR.rotation.x = Math.PI / 2;
+		this.shieldR.position.set(0, 0, -0.1);
+		this.gauntletR.add(this.shieldR);
 	}
 
 	buildStars() {
@@ -454,6 +532,127 @@ export class GameSystem extends createSystem({
 		geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
 		const mat = new LineBasicMaterial({ color: 0x002244, transparent: true, opacity: 0.15 });
 		this.scene.add(new LineSegments(geo, mat));
+	}
+
+	// ── R2: Beacon pillars at arena corners ──
+	buildBeacons() {
+		const beaconH = 6;
+		const positions = [
+			[-7, 0, -1],
+			[7, 0, -1],
+			[-7, 0, -25],
+			[7, 0, -25],
+		];
+		const colors = [0x00ffcc, 0x00ccff, 0xcc44ff, 0xff4466];
+		for (let i = 0; i < 4; i++) {
+			const [bx, _by, bz] = positions[i];
+			const col = colors[i];
+
+			// Pillar body
+			const pillarGeo = new CylinderGeometry(0.08, 0.08, beaconH, 6);
+			const pillarMat = new MeshStandardMaterial({
+				color: col, emissive: col, emissiveIntensity: 0.5,
+				transparent: true, opacity: 0.6,
+			});
+			const pillar = new Mesh(pillarGeo, pillarMat);
+			pillar.position.set(bx, beaconH / 2, bz);
+			this.scene.add(pillar);
+
+			// Top beacon sphere
+			const topGeo = new SphereGeometry(0.15, 8, 6);
+			const topMat = new MeshStandardMaterial({
+				color: col, emissive: col, emissiveIntensity: 1.2,
+			});
+			const top = new Mesh(topGeo, topMat);
+			top.position.set(bx, beaconH + 0.15, bz);
+			this.scene.add(top);
+
+			// Point light at top
+			const bl = new PointLight(col, 1.5, 15);
+			bl.position.set(bx, beaconH + 0.3, bz);
+			this.scene.add(bl);
+		}
+	}
+
+	// ── R2: Neon ring on arena floor ──
+	buildFloorRing() {
+		const segments = 64;
+		const radius = 6;
+		const verts: number[] = [];
+		for (let i = 0; i < segments; i++) {
+			const a0 = (i / segments) * Math.PI * 2;
+			const a1 = ((i + 1) / segments) * Math.PI * 2;
+			verts.push(
+				Math.cos(a0) * radius, 0.02, Math.sin(a0) * radius - 12,
+				Math.cos(a1) * radius, 0.02, Math.sin(a1) * radius - 12,
+			);
+		}
+		const geo = new BufferGeometry();
+		geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
+		const mat = new LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.25 });
+		this.scene.add(new LineSegments(geo, mat));
+	}
+
+	// ── R2: Orbiting accent spheres ──
+	buildOrbitSpheres() {
+		const configs = [
+			{ radius: 5, height: 3.5, speed: 0.3, color: 0x00ffcc },
+			{ radius: 6, height: 2.0, speed: -0.2, color: 0xcc44ff },
+			{ radius: 4.5, height: 4.5, speed: 0.4, color: 0xff8800 },
+			{ radius: 7, height: 1.5, speed: -0.15, color: 0x44ccff },
+		];
+		for (const c of configs) {
+			const geo = new SphereGeometry(0.1, 8, 6);
+			const mat = new MeshStandardMaterial({
+				color: c.color, emissive: c.color, emissiveIntensity: 1.0,
+				transparent: true, opacity: 0.7,
+			});
+			const mesh = new Mesh(geo, mat);
+			mesh.position.set(c.radius, c.height, -12);
+			this.scene.add(mesh);
+
+			const light = new PointLight(c.color, 0.8, 10);
+			light.position.copy(mesh.position);
+			this.scene.add(light);
+
+			this.orbitSpheres.push({
+				mesh, light,
+				angle: Math.random() * Math.PI * 2,
+				speed: c.speed,
+				radius: c.radius,
+				height: c.height,
+			});
+		}
+	}
+
+	// ── R2: Ambient floating motes ──
+	buildAmbientMotes() {
+		for (let i = 0; i < 40; i++) {
+			const geo = new SphereGeometry(0.03, 4, 3);
+			const hue = Math.random();
+			let color = 0x005566;
+			if (hue < 0.3) color = 0x003355;
+			else if (hue < 0.6) color = 0x004466;
+			else color = 0x005577;
+
+			const mat = new MeshBasicMaterial({
+				color, transparent: true, opacity: 0.2 + Math.random() * 0.15,
+			});
+			const mesh = new Mesh(geo, mat);
+			mesh.position.set(
+				(Math.random() - 0.5) * 14,
+				0.5 + Math.random() * 5,
+				-Math.random() * 25,
+			);
+			this.scene.add(mesh);
+
+			const vel = new Vector3(
+				(Math.random() - 0.5) * 0.3,
+				(Math.random() - 0.5) * 0.15,
+				(Math.random() - 0.5) * 0.2,
+			);
+			this.ambientMotes.push({ mesh, vel });
+		}
 	}
 
 	// ── Panels ──
@@ -771,6 +970,16 @@ export class GameSystem extends createSystem({
 		}
 
 		playSfx('wave');
+
+		// R2: Wave preview — show incoming shot types on HUD
+		this.wavePreviewTimer = 2.0;
+		const types = this.getShotTypes();
+		const typeNames = types.map(t => t.charAt(0).toUpperCase() + t.slice(1));
+		const previewText = 'WAVE ' + w + ': ' + typeNames.join(' + ');
+		if (this.hudDoc) {
+			this.setTxt(this.hudDoc, 'status', previewText);
+		}
+
 		this.updateHud();
 	}
 
@@ -851,12 +1060,19 @@ export class GameSystem extends createSystem({
 		if (w >= 5 || (this.mode === 'challenge' && this.challengeLevel >= 3)) types.push('power');
 		if (w >= 8 || (this.mode === 'challenge' && this.challengeLevel >= 5)) types.push('split');
 		if (w >= 12 || (this.mode === 'challenge' && this.challengeLevel >= 7)) types.push('phantom');
+		if (w >= 15 || (this.mode === 'challenge' && this.challengeLevel >= 9)) types.push('multi');
 		return types;
 	}
 
 	spawnShot(type?: ShotType) {
 		const types = this.getShotTypes();
 		if (!type) type = types[Math.floor(Math.random() * types.length)];
+
+		// R2: Multi-shot spawns 3 spread shots and returns
+		if (type === 'multi') {
+			this.spawnMultiShots();
+			return;
+		}
 
 		const dm = DIFF_MULT[this.difficulty];
 		const targetX = (Math.random() - 0.5) * (GOAL_WIDTH - 0.4);
@@ -920,6 +1136,62 @@ export class GameSystem extends createSystem({
 		this.shots.push(shot);
 		this.waveShotsLaunched++;
 		playSfx('launch');
+	}
+
+	// ── R2: Multi-shot — 3 spread shots ──
+	spawnMultiShots() {
+		const dm = DIFF_MULT[this.difficulty];
+		const baseSpeed = 6 * dm;
+		const color = 0xff8800;
+		const radius = SHOT_RADIUS * 0.65;
+
+		const spawnX = (Math.random() - 0.5) * 4;
+		const spawnY = 1.5 + Math.random() * 1.5;
+		const spawnZ = SPAWN_Z + Math.random() * 3;
+		const basePos = new Vector3(spawnX, spawnY, spawnZ);
+
+		const offsets = [-1.2, 0, 1.2]; // spread across goal width
+
+		for (let i = 0; i < 3; i++) {
+			const targetX = offsets[i] + (Math.random() - 0.5) * 0.5;
+			const targetY = 0.4 + Math.random() * (GOAL_HEIGHT - 0.8);
+			const target = new Vector3(targetX, targetY, GOAL_Z);
+
+			const pos = basePos.clone();
+			pos.x += offsets[i] * 0.3;
+
+			const dir = target.clone().sub(pos).normalize();
+			const vel = dir.multiplyScalar(baseSpeed);
+
+			const geo = new SphereGeometry(radius, 8, 6);
+			const mat = new MeshStandardMaterial({
+				color, emissive: color, emissiveIntensity: 1.0,
+				transparent: true, opacity: 0.9,
+			});
+			const mesh = new Mesh(geo, mat);
+			mesh.position.copy(pos);
+			this.scene.add(mesh);
+
+			const trail = new Group();
+			for (let t = 0; t < 3; t++) {
+				const tGeo = new SphereGeometry(radius * (1 - t * 0.2), 4, 3);
+				const tMat = new MeshBasicMaterial({
+					color, transparent: true, opacity: 0.25 - t * 0.06,
+				});
+				trail.add(new Mesh(tGeo, tMat));
+			}
+			this.scene.add(trail);
+
+			this.shots.push({
+				mesh, trail, type: 'standard', pos: pos.clone(), vel: vel.clone(),
+				target, speed: baseSpeed, alive: true, blocked: false,
+				splitDone: true, phantomTimer: 0, visible: true,
+				curvePhase: 0, curveAmplitude: 0, spawnZ: pos.z,
+			});
+		}
+
+		this.waveShotsLaunched++;
+		playSfx('multi');
 	}
 
 	spawnSplitChildren(parent: Shot) {
@@ -1029,10 +1301,16 @@ export class GameSystem extends createSystem({
 			playSfx('save');
 		}
 
-		this.score += base * multi;
+		const earned = base * multi;
+		this.score += earned;
 
 		// Particles
 		if (this.particlesOn) this.spawnSaveParticles(shot.pos, shot.type === 'power' ? 0xff4444 : 0x00ffcc);
+
+		// R2: Score popup
+		const popColor = isCatch ? '#ffdd00' : '#00ffcc';
+		const popText = '+' + earned;
+		this.spawnScorePopup(shot.pos, popText, popColor);
 
 		// Haptics
 		this.rumble('right', 0.5, 40);
@@ -1071,6 +1349,21 @@ export class GameSystem extends createSystem({
 		playSfx('goal');
 		if (this.particlesOn) this.spawnSaveParticles(shot.pos, 0xff4444);
 
+		// R2: Goal flash — turn posts red
+		this.goalFlashTimer = 0.5;
+		for (const post of this.goalPosts) {
+			const m = post.material as MeshStandardMaterial;
+			m.color.set(0xff0000);
+			m.emissive.set(0xff0000);
+			m.emissiveIntensity = 2.0;
+		}
+
+		// R2: Camera shake
+		this.cameraShakeTimer = 0.3;
+
+		// R2: Goal popup
+		this.spawnScorePopup(shot.pos, '-1 LIFE', '#ff4444');
+
 		this.rumble('right', 0.8, 80);
 		this.rumble('left', 0.8, 80);
 
@@ -1098,6 +1391,25 @@ export class GameSystem extends createSystem({
 		}
 	}
 
+	// ── R2: Score popup ──
+	spawnScorePopup(pos: Vector3, text: string, color: string) {
+		try {
+			const tex = makePopupTexture(text, color);
+			const geo = new BoxGeometry(0.4, 0.2, 0.001);
+			const mat = new MeshBasicMaterial({
+				map: tex, transparent: true, opacity: 1.0,
+				side: DoubleSide, depthWrite: false,
+			});
+			const mesh = new Mesh(geo, mat);
+			mesh.position.set(pos.x, pos.y + 0.3, pos.z);
+			// Face camera (billboard) — look toward player
+			mesh.lookAt(0, pos.y + 0.3, 0);
+			this.scene.add(mesh);
+			const vel = new Vector3(0, 2.0, 0);
+			this.scorePopups.push({ mesh, vel, life: 1.5 });
+		} catch { /* canvas not available */ }
+	}
+
 	// ── Haptics ──
 	rumble(hand: 'left' | 'right', intensity = 1, durationMs = 60) {
 		const gp = this.w.input?.xr?.gamepads?.[hand]?.gamepad;
@@ -1115,9 +1427,58 @@ export class GameSystem extends createSystem({
 
 	// ── Update ──
 	update(delta: number, _time: number) {
+		// R2: Orbit spheres animate even when not playing (ambient decoration)
+		this.updateOrbitSpheres(_time);
+
+		// R2: Ambient motes drift always
+		this.updateAmbientMotes(Math.min(delta, 0.05));
+
 		if (this.state !== 'playing') return;
 
 		const dt = Math.min(delta, 0.05); // cap
+
+		// R2: Wave preview countdown
+		if (this.wavePreviewTimer > 0) {
+			this.wavePreviewTimer -= dt;
+			if (this.wavePreviewTimer <= 0) {
+				this.wavePreviewTimer = 0;
+				if (this.hudDoc) this.setTxt(this.hudDoc, 'status', ' ');
+			}
+		}
+
+		// R2: Goal flash fade
+		if (this.goalFlashTimer > 0) {
+			this.goalFlashTimer -= dt;
+			const t = Math.max(0, this.goalFlashTimer / 0.5);
+			for (const post of this.goalPosts) {
+				const m = post.material as MeshStandardMaterial;
+				// Lerp from red back to cyan
+				const r = t * 1.0;
+				const g = (1 - t) * 1.0;
+				const b = (1 - t) * 0.8;
+				m.color.setRGB(r, g, b);
+				m.emissive.setRGB(r, g, b);
+				m.emissiveIntensity = 0.8 + t * 1.2;
+			}
+		}
+
+		// R2: Camera shake
+		if (this.cameraShakeTimer > 0) {
+			this.cameraShakeTimer -= dt;
+			const cam = this.w.camera;
+			if (cam) {
+				const intensity = this.cameraShakeTimer / 0.3 * 0.05;
+				cam.position.x = (Math.random() - 0.5) * intensity * 2;
+				cam.position.y = 1.7 + (Math.random() - 0.5) * intensity * 2;
+				if (this.cameraShakeTimer <= 0) {
+					cam.position.x = 0;
+					cam.position.y = 1.7;
+				}
+			}
+		}
+
+		// R2: Gauntlet shield combo scaling
+		this.updateShields(_time);
 
 		// Time attack countdown
 		if (this.mode === 'timeattack') {
@@ -1147,11 +1508,9 @@ export class GameSystem extends createSystem({
 		}
 
 		// Update shots
-		let allDone = true;
 		for (let i = this.shots.length - 1; i >= 0; i--) {
 			const s = this.shots[i];
 			if (!s.alive) continue;
-			allDone = false;
 
 			// Move
 			s.pos.x += s.vel.x * dt;
@@ -1163,7 +1522,6 @@ export class GameSystem extends createSystem({
 
 			// Curve behavior
 			if (s.type === 'curve') {
-				const progress = (s.pos.z - s.spawnZ) / (GOAL_Z - s.spawnZ);
 				s.curvePhase += dt * 3;
 				const lateralOffset = Math.sin(s.curvePhase) * s.curveAmplitude * dt;
 				s.pos.x += lateralOffset;
@@ -1255,7 +1613,7 @@ export class GameSystem extends createSystem({
 			this.endWave();
 		}
 
-		// Update particles
+		// Update burst particles
 		for (let i = this.particles.length - 1; i >= 0; i--) {
 			const p = this.particles[i];
 			p.life -= dt;
@@ -1272,10 +1630,89 @@ export class GameSystem extends createSystem({
 			mat.opacity = p.life;
 		}
 
+		// R2: Update score popups
+		for (let i = this.scorePopups.length - 1; i >= 0; i--) {
+			const p = this.scorePopups[i];
+			p.life -= dt;
+			if (p.life <= 0) {
+				this.scene.remove(p.mesh);
+				this.scorePopups.splice(i, 1);
+				continue;
+			}
+			p.mesh.position.y += p.vel.y * dt;
+			const mat = p.mesh.material as MeshBasicMaterial;
+			mat.opacity = Math.min(1, p.life / 0.5); // fade out in last 0.5s
+		}
+
 		// Gauntlet glow pulse
 		const pulse = 0.6 + Math.sin(_time * 4) * 0.2;
 		(this.gauntletL.material as MeshStandardMaterial).emissiveIntensity = pulse;
 		(this.gauntletR.material as MeshStandardMaterial).emissiveIntensity = pulse;
+	}
+
+	// ── R2: Orbit spheres animation ──
+	updateOrbitSpheres(time: number) {
+		for (const orb of this.orbitSpheres) {
+			orb.angle += orb.speed * 0.016;
+			const x = Math.cos(orb.angle) * orb.radius;
+			const z = Math.sin(orb.angle) * orb.radius - 12;
+			const y = orb.height + Math.sin(time * 0.5 + orb.angle) * 0.3;
+			orb.mesh.position.set(x, y, z);
+			orb.light.position.set(x, y, z);
+		}
+	}
+
+	// ── R2: Ambient motes drift ──
+	updateAmbientMotes(dt: number) {
+		for (const m of this.ambientMotes) {
+			m.mesh.position.x += m.vel.x * dt;
+			m.mesh.position.y += m.vel.y * dt;
+			m.mesh.position.z += m.vel.z * dt;
+
+			// Wrap bounds
+			if (m.mesh.position.x > 7) m.mesh.position.x = -7;
+			if (m.mesh.position.x < -7) m.mesh.position.x = 7;
+			if (m.mesh.position.y > 6) m.mesh.position.y = 0.5;
+			if (m.mesh.position.y < 0.3) m.mesh.position.y = 5.5;
+			if (m.mesh.position.z > 2) m.mesh.position.z = -24;
+			if (m.mesh.position.z < -25) m.mesh.position.z = 1;
+		}
+	}
+
+	// ── R2: Shield combo scaling ──
+	updateShields(time: number) {
+		const comboLevel = Math.min(this.combo, 15);
+		const shieldScale = 1.0 + comboLevel * 0.1; // scale 1.0 to 2.5
+		const maxScale = 2.5;
+		const s = Math.min(shieldScale, maxScale);
+
+		this.shieldL.scale.set(s, 1, s);
+		this.shieldR.scale.set(s, 1, s);
+
+		// Color shift: cyan -> gold -> white
+		const matL = this.shieldL.material as MeshBasicMaterial;
+		const matR = this.shieldR.material as MeshBasicMaterial;
+
+		let shieldColor: Color;
+		if (comboLevel < 5) {
+			shieldColor = new Color(0x00ccff); // cyan
+		} else if (comboLevel < 10) {
+			const t = (comboLevel - 5) / 5;
+			shieldColor = new Color(0x00ccff).lerp(new Color(0xffdd00), t);
+		} else {
+			const t = (comboLevel - 10) / 5;
+			shieldColor = new Color(0xffdd00).lerp(new Color(0xffffff), t);
+		}
+		matL.color.copy(shieldColor);
+		matR.color.copy(shieldColor);
+
+		// Opacity pulses faster at higher combo
+		const pulseSpeed = 3 + comboLevel * 0.5;
+		const baseOpacity = 0.1 + comboLevel * 0.02;
+		const pulseAmount = 0.08 + comboLevel * 0.01;
+		const opacity = baseOpacity + Math.sin(time * pulseSpeed) * pulseAmount;
+		matL.opacity = Math.min(0.5, opacity);
+		matR.opacity = Math.min(0.5, opacity);
 	}
 
 	updateBrowserGauntlets() {

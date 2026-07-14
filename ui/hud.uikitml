@@ -31,4 +31,7 @@
   <container flexDirection="row" justifyContent="center" width="290">
     <text name="timer" fontSize="11" color="#446688">--</text>
   </container>
+  <container flexDirection="row" justifyContent="center" width="290">
+    <text name="status" fontSize="9" color="#44aacc"> </text>
+  </container>
 </container>
