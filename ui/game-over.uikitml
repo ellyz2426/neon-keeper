@@ -2,48 +2,58 @@
   flexDirection="column"
   alignItems="center"
   justifyContent="center"
-  gap="10"
-  padding="20"
+  gap="8"
+  padding="16"
   backgroundColor="#000a15ee"
   borderRadius="14"
   borderColor="#ff4444"
   borderWidth="2"
-  width="400"
-  height="500"
+  width="420"
+  height="580"
 >
   <text fontSize="30" color="#ff4444" fontWeight="bold">GAME OVER</text>
 
-  <container flexDirection="column" gap="6" width="320" marginTop="6">
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Final Score</text>
-      <text name="go-score" fontSize="18" color="#00ffcc" fontWeight="bold">0</text>
+  <container flexDirection="column" gap="4" width="340" marginTop="4">
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Final Score</text>
+      <text name="go-score" fontSize="16" color="#00ffcc" fontWeight="bold">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Waves Survived</text>
-      <text name="go-waves" fontSize="14" color="#ffaa00">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Waves Survived</text>
+      <text name="go-waves" fontSize="13" color="#ffaa00">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Total Saves</text>
-      <text name="go-saves" fontSize="14" color="#00ccff">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Total Saves</text>
+      <text name="go-saves" fontSize="13" color="#00ccff">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Catches</text>
-      <text name="go-catches" fontSize="14" color="#ffaa00">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Catches</text>
+      <text name="go-catches" fontSize="13" color="#ffaa00">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Best Streak</text>
-      <text name="go-streak" fontSize="14" color="#cc44ff">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Best Streak</text>
+      <text name="go-streak" fontSize="13" color="#cc44ff">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Save Rate</text>
-      <text name="go-rate" fontSize="14" color="#44cc44">0%</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Save Rate</text>
+      <text name="go-rate" fontSize="13" color="#44cc44">0%</text>
     </container>
   </container>
 
-  <text name="go-record" fontSize="14" color="#ffaa00" fontWeight="bold" marginTop="4"></text>
-  <text name="go-tip" fontSize="10" color="#446688" marginTop="2"></text>
+  <text name="go-record" fontSize="14" color="#ffaa00" fontWeight="bold" marginTop="2"></text>
+  <text name="go-tip" fontSize="10" color="#446688" marginTop="1"></text>
 
-  <container flexDirection="row" gap="10" marginTop="8">
+  <container flexDirection="column" gap="2" width="340" marginTop="3">
+    <text fontSize="11" color="#558899" fontWeight="bold">SHOT BREAKDOWN</text>
+    <text name="go-stat-standard" fontSize="10" color="#00ffcc" padding="1"></text>
+    <text name="go-stat-curve" fontSize="10" color="#ffaa00" padding="1"></text>
+    <text name="go-stat-power" fontSize="10" color="#ff4444" padding="1"></text>
+    <text name="go-stat-split" fontSize="10" color="#cc44ff" padding="1"></text>
+    <text name="go-stat-phantom" fontSize="10" color="#44ccff" padding="1"></text>
+    <text name="go-stat-multi" fontSize="10" color="#ff8800" padding="1"></text>
+  </container>
+
+  <container flexDirection="row" gap="10" marginTop="4">
     <text
       name="go-retry"
       fontSize="18"

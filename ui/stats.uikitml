@@ -2,85 +2,96 @@
   flexDirection="column"
   alignItems="center"
   justifyContent="center"
-  gap="8"
-  padding="20"
+  gap="6"
+  padding="16"
   backgroundColor="#000a15ee"
   borderRadius="14"
   borderColor="#aa88ff"
   borderWidth="2"
-  width="400"
-  height="600"
+  width="420"
+  height="720"
 >
   <text fontSize="24" color="#aa88ff" fontWeight="bold">CAREER STATS</text>
 
-  <container flexDirection="column" gap="6" width="320" marginTop="8">
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Games Played</text>
-      <text name="st-games" fontSize="14" color="#00ccff">0</text>
+  <container flexDirection="column" gap="4" width="340" marginTop="6">
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Games Played</text>
+      <text name="st-games" fontSize="13" color="#00ccff">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Total Saves</text>
-      <text name="st-saves" fontSize="14" color="#00ffcc">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Total Saves</text>
+      <text name="st-saves" fontSize="13" color="#00ffcc">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Total Catches</text>
-      <text name="st-catches" fontSize="14" color="#ffaa00">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Total Catches</text>
+      <text name="st-catches" fontSize="13" color="#ffaa00">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Goals Conceded</text>
-      <text name="st-conceded" fontSize="14" color="#ff4444">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Goals Conceded</text>
+      <text name="st-conceded" fontSize="13" color="#ff4444">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Save Rate</text>
-      <text name="st-rate" fontSize="14" color="#44cc44">0%</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Save Rate</text>
+      <text name="st-rate" fontSize="13" color="#44cc44">0%</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Best Wave</text>
-      <text name="st-bestwave" fontSize="14" color="#ffaa00">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Best Wave</text>
+      <text name="st-bestwave" fontSize="13" color="#ffaa00">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Best Score</text>
-      <text name="st-bestscore" fontSize="14" color="#00ffcc">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Best Score</text>
+      <text name="st-bestscore" fontSize="13" color="#00ffcc">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Best Streak</text>
-      <text name="st-beststreak" fontSize="14" color="#cc44ff">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Best Streak</text>
+      <text name="st-beststreak" fontSize="13" color="#cc44ff">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="14" color="#558899">Play Time</text>
-      <text name="st-time" fontSize="14" color="#446688">0m</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Play Time</text>
+      <text name="st-time" fontSize="13" color="#446688">0m</text>
     </container>
   </container>
 
-  <text fontSize="16" color="#558899" fontWeight="bold" marginTop="6">MODE BESTS</text>
-  <container flexDirection="column" gap="4" width="320" marginTop="2">
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="12" color="#00ffcc">Arcade</text>
-      <text name="st-arcade-best" fontSize="12" color="#00ffcc">0</text>
+  <text fontSize="14" color="#558899" fontWeight="bold" marginTop="4">MODE BESTS</text>
+  <container flexDirection="column" gap="3" width="340" marginTop="2">
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="11" color="#00ffcc">Arcade</text>
+      <text name="st-arcade-best" fontSize="11" color="#00ffcc">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="12" color="#ffaa00">Challenge</text>
-      <text name="st-challenge-best" fontSize="12" color="#ffaa00">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="11" color="#ffaa00">Challenge</text>
+      <text name="st-challenge-best" fontSize="11" color="#ffaa00">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="12" color="#44cc44">Training</text>
-      <text name="st-training-best" fontSize="12" color="#44cc44">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="11" color="#44cc44">Training</text>
+      <text name="st-training-best" fontSize="11" color="#44cc44">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="12" color="#cc44ff">Time Attack</text>
-      <text name="st-timeattack-best" fontSize="12" color="#cc44ff">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="11" color="#cc44ff">Time Attack</text>
+      <text name="st-timeattack-best" fontSize="11" color="#cc44ff">0</text>
     </container>
-    <container flexDirection="row" justifyContent="space-between" padding="4">
-      <text fontSize="12" color="#ff6600">Endless</text>
-      <text name="st-endless-best" fontSize="12" color="#ff6600">0</text>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="11" color="#ff6600">Endless</text>
+      <text name="st-endless-best" fontSize="11" color="#ff6600">0</text>
     </container>
+  </container>
+
+  <text fontSize="14" color="#558899" fontWeight="bold" marginTop="4">SHOT SAVE RATES</text>
+  <container flexDirection="column" gap="2" width="340" marginTop="2">
+    <text name="st-standard-rate" fontSize="10" color="#00ffcc" padding="2"></text>
+    <text name="st-curve-rate" fontSize="10" color="#ffaa00" padding="2"></text>
+    <text name="st-power-rate" fontSize="10" color="#ff4444" padding="2"></text>
+    <text name="st-split-rate" fontSize="10" color="#cc44ff" padding="2"></text>
+    <text name="st-phantom-rate" fontSize="10" color="#44ccff" padding="2"></text>
+    <text name="st-multi-rate" fontSize="10" color="#ff8800" padding="2"></text>
+    <text name="st-boss-rate" fontSize="10" color="#ff4400" padding="2"></text>
   </container>
 
   <text
     name="st-back"
     fontSize="14"
     color="#446688"
-    marginTop="8"
+    marginTop="6"
     cursor="pointer"
     padding="6"
   >&lt; BACK</text>

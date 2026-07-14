@@ -18,7 +18,7 @@ type GameMode = 'arcade' | 'challenge' | 'training' | 'timeattack' | 'endless';
 type ShotType = 'standard' | 'curve' | 'power' | 'split' | 'phantom' | 'multi';
 type Difficulty = 'easy' | 'normal' | 'hard';
 type PowerUpType = 'shield_expand' | 'slow_mo' | 'double_points' | 'magnet';
-type WaveModifier = 'normal' | 'fast_shots' | 'giant_balls' | 'tiny_goal' | 'mirror' | 'fog_thick';
+type WaveModifier = 'normal' | 'fast_shots' | 'giant_balls' | 'tiny_goal' | 'mirror' | 'fog_thick' | 'double_shots' | 'low_gravity' | 'speed_ramp';
 type TrainingShotOption = ShotType | 'all';
 
 interface LeaderboardEntry {
@@ -83,6 +83,10 @@ interface SaveData {
 	modeStats: Record<string, ModeStatEntry>;
 	leaderboard: LeaderboardEntry[];
 	challengeStars: number[];
+	// R7: New fields
+	shotStats: Record<string, { saves: number; goals: number }>;
+	bossesDefeated: number;
+	modifiersSeen: string[];
 }
 
 // ── Constants ──
@@ -98,6 +102,9 @@ const ACHV_NAMES = [
 	'Catch Master', 'Catch Pro', 'Wave 5', 'Wave 10', 'Wave 15',
 	'Wave 25', 'Score 1K', 'Score 5K', 'Score 10K', 'Score 25K',
 	'Phantom Blocker', 'Power Stopper', 'Split Saver', 'Challenge Clear', 'Time Attack 50',
+	// R7: 10 new achievements
+	'Hard Mode Hero', 'Endless 100', 'Dive Save', 'Power Collector', 'Boss Slayer',
+	'Perfect Challenge', 'Star Collector', 'Score 50K', 'Modifier Master', 'Veteran',
 ];
 const ACHV_DESC = [
 	'Block your first shot', 'Complete a wave without conceding', 'Get a 5-save streak',
@@ -106,6 +113,12 @@ const ACHV_DESC = [
 	'Reach 1,000 points', 'Reach 5,000 points', 'Reach 10,000 points', 'Reach 25,000 points',
 	'Save a phantom shot', 'Save 10 power shots', 'Save both halves of a split',
 	'Complete challenge mode', 'Save 50+ in time attack',
+	// R7
+	'Complete wave 10 on Hard', 'Block 100 shots in Endless', 'Block a shot while diving',
+	'Collect all 4 power-up types in one game', 'Defeat 5 boss shots total',
+	'Get 3 stars on a challenge level', 'Earn all 30 challenge stars',
+	'Reach 50,000 points', 'Complete a wave with every modifier type',
+	'Play 50 games total',
 ];
 
 const RANKS = ['Rookie', 'Defender', 'Guardian', 'Sentinel', 'Warden', 'Champion', 'Elite', 'Legend', 'Mythic'];
@@ -754,6 +767,20 @@ export class GameSystem extends createSystem({
 	// ── R6: Streak milestones (only fire once per game) ──
 	streakMilestonesHit: Set<number> = new Set();
 
+	// ── R7: Per-game session shot stats ──
+	gameSessionShotStats: Record<string, { saves: number; goals: number }> = {};
+
+	// ── R7: Power-up collection tracking (per game) ──
+	powerUpsCollectedThisGame: Set<string> = new Set();
+
+	// ── R7: Training mode trajectory preview ──
+	trainingPaths: { line: LineSegments; shotRef: Shot }[] = [];
+
+	// ── R7: Goal decoration ──
+	goalCornerSpheres: Mesh[] = [];
+	goalEnergyLines: LineSegments[] = [];
+	goalDangerZone: Mesh | null = null;
+
 	// ── Save data ──
 	saveData!: SaveData;
 
@@ -790,6 +817,21 @@ export class GameSystem extends createSystem({
 				}
 				if (!this.saveData.challengeStars) this.saveData.challengeStars = new Array(10).fill(0);
 				if (!this.saveData.leaderboard) this.saveData.leaderboard = [];
+				// R7: Migrate achievements array to 30
+				if (this.saveData.achievements.length < 30) {
+					while (this.saveData.achievements.length < 30) this.saveData.achievements.push(false);
+				}
+				// R7: Migrate new save data fields
+				if (!this.saveData.shotStats) {
+					this.saveData.shotStats = {
+						standard: { saves: 0, goals: 0 }, curve: { saves: 0, goals: 0 },
+						power: { saves: 0, goals: 0 }, split: { saves: 0, goals: 0 },
+						phantom: { saves: 0, goals: 0 }, multi: { saves: 0, goals: 0 },
+						boss: { saves: 0, goals: 0 },
+					};
+				}
+				if (this.saveData.bossesDefeated === undefined) this.saveData.bossesDefeated = 0;
+				if (!this.saveData.modifiersSeen) this.saveData.modifiersSeen = [];
 				this.gauntletColor = this.saveData.gauntletColor;
 				return;
 			}
@@ -797,7 +839,7 @@ export class GameSystem extends createSystem({
 		this.saveData = {
 			gamesPlayed: 0, totalSaves: 0, totalCatches: 0, totalGoals: 0,
 			bestWave: 0, bestScore: 0, bestStreak: 0,
-			achievements: new Array(20).fill(false), playTimeMs: 0, powerSaves: 0,
+			achievements: new Array(30).fill(false), playTimeMs: 0, powerSaves: 0,
 			gauntletColor: 'Cyan',
 			modeStats: {
 				arcade: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
@@ -808,6 +850,15 @@ export class GameSystem extends createSystem({
 			},
 			leaderboard: [],
 			challengeStars: new Array(10).fill(0),
+			// R7
+			shotStats: {
+				standard: { saves: 0, goals: 0 }, curve: { saves: 0, goals: 0 },
+				power: { saves: 0, goals: 0 }, split: { saves: 0, goals: 0 },
+				phantom: { saves: 0, goals: 0 }, multi: { saves: 0, goals: 0 },
+				boss: { saves: 0, goals: 0 },
+			},
+			bossesDefeated: 0,
+			modifiersSeen: [],
 		};
 	}
 
@@ -874,6 +925,9 @@ export class GameSystem extends createSystem({
 
 		// R5: Screen flash overlay
 		this.buildFlashMesh();
+
+		// R7: Goal decoration (corner spheres, energy lines, danger zone)
+		this.buildGoalDecoration();
 	}
 
 	buildFloorGrid() {
@@ -1513,7 +1567,7 @@ export class GameSystem extends createSystem({
 	refreshAchievements() {
 		if (!this.achvDoc) return;
 		let unlocked = 0;
-		for (let i = 0; i < 20; i++) {
+		for (let i = 0; i < 30; i++) {
 			const done = this.saveData.achievements[i];
 			if (done) unlocked++;
 			const prefix = done ? '[*] ' : '[ ] ';
@@ -1521,7 +1575,7 @@ export class GameSystem extends createSystem({
 			const el = this.achvDoc.getElementById('ach-' + i) as UIKit.Text | undefined;
 			el?.setProperties({ text: prefix + ACHV_NAMES[i] + ' - ' + ACHV_DESC[i], color });
 		}
-		this.setTxt(this.achvDoc, 'ach-count', unlocked + ' / 20 Unlocked');
+		this.setTxt(this.achvDoc, 'ach-count', unlocked + ' / 30 Unlocked');
 	}
 
 	refreshStats() {
@@ -1547,6 +1601,24 @@ export class GameSystem extends createSystem({
 			this.setTxt(this.statsDoc, 'st-training-best', ms.training ? String(ms.training.bestScore) : '0');
 			this.setTxt(this.statsDoc, 'st-timeattack-best', ms.timeattack ? String(ms.timeattack.bestScore) : '0');
 			this.setTxt(this.statsDoc, 'st-endless-best', ms.endless ? String(ms.endless.bestScore) : '0');
+		}
+
+		// R7: Per-shot-type save rates
+		if (s.shotStats) {
+			const shotTypes = ['standard', 'curve', 'power', 'split', 'phantom', 'multi', 'boss'];
+			for (const st of shotTypes) {
+				const entry = s.shotStats[st];
+				if (entry) {
+					const stTotal = entry.saves + entry.goals;
+					const rate = stTotal > 0 ? Math.round(entry.saves / stTotal * 100) : 0;
+					const display = stTotal > 0
+						? st.charAt(0).toUpperCase() + st.slice(1) + ': ' + rate + '% (' + entry.saves + '/' + stTotal + ')'
+						: '';
+					this.setTxt(this.statsDoc, 'st-' + st + '-rate', display);
+				} else {
+					this.setTxt(this.statsDoc, 'st-' + st + '-rate', '');
+				}
+			}
 		}
 	}
 
@@ -1659,6 +1731,20 @@ export class GameSystem extends createSystem({
 		this.activePowerUp = null;
 		this.powerUpTimer = 0;
 
+		// R7: Reset per-game session shot stats
+		this.gameSessionShotStats = {
+			standard: { saves: 0, goals: 0 }, curve: { saves: 0, goals: 0 },
+			power: { saves: 0, goals: 0 }, split: { saves: 0, goals: 0 },
+			phantom: { saves: 0, goals: 0 }, multi: { saves: 0, goals: 0 },
+			boss: { saves: 0, goals: 0 },
+		};
+
+		// R7: Reset power-up collection tracker
+		this.powerUpsCollectedThisGame = new Set();
+
+		// R7: Clear training paths
+		this.clearTrainingPaths();
+
 		// R4: Reset dive
 		this.isDiving = false;
 		this.diveTimer = 0;
@@ -1699,10 +1785,16 @@ export class GameSystem extends createSystem({
 		// R4: Remove previous modifier, maybe apply new one (not in endless)
 		this.removeWaveModifier();
 		if (this.wave >= 3 && this.mode !== 'training' && this.mode !== 'endless' && Math.random() < 0.3) {
-			const mods: WaveModifier[] = ['fast_shots', 'giant_balls', 'tiny_goal', 'mirror', 'fog_thick'];
+			const mods: WaveModifier[] = ['fast_shots', 'giant_balls', 'tiny_goal', 'mirror', 'fog_thick', 'double_shots', 'low_gravity', 'speed_ramp'];
 			this.currentModifier = mods[Math.floor(Math.random() * mods.length)];
 			this.applyWaveModifier();
 			this.modifierDisplayTimer = 3.0;
+			// R7: Track modifier for Modifier Master achievement
+			if (!this.saveData.modifiersSeen) this.saveData.modifiersSeen = [];
+			if (!this.saveData.modifiersSeen.includes(this.currentModifier)) {
+				this.saveData.modifiersSeen.push(this.currentModifier);
+				this.persistSave();
+			}
 		}
 
 		const dm = DIFF_MULT[this.difficulty];
@@ -1748,6 +1840,7 @@ export class GameSystem extends createSystem({
 			const modNames: Record<WaveModifier, string> = {
 				normal: '', fast_shots: 'FAST!', giant_balls: 'GIANT!',
 				tiny_goal: 'TINY GOAL!', mirror: 'MIRROR!', fog_thick: 'FOG!',
+				double_shots: 'DOUBLE!', low_gravity: 'LOW GRAV!', speed_ramp: 'SPEED RAMP!',
 			};
 			previewText += ' [' + modNames[this.currentModifier] + ']';
 		}
@@ -1783,6 +1876,11 @@ export class GameSystem extends createSystem({
 					this.saveData.challengeStars[levelIdx] = stars;
 					this.persistSave();
 				}
+				// R7: Perfect Challenge — 3 stars on any level
+				if (stars >= 3) this.unlockAchievement(25);
+				// R7: Star Collector — all 30 stars
+				const totalStars = this.saveData.challengeStars.reduce((a: number, b: number) => a + b, 0);
+				if (totalStars >= 30) this.unlockAchievement(26);
 			}
 			this.challengeLevel++;
 			if (this.challengeLevel > 10) {
@@ -1801,6 +1899,16 @@ export class GameSystem extends createSystem({
 		if (this.mode === 'endless') return;
 
 		if (this.waveGoals === 0) this.unlockAchievement(1); // Clean Sheet
+
+		// R7: Hard Mode Hero — wave 10 on hard
+		if (this.difficulty === 'hard' && this.wave >= 10) {
+			this.unlockAchievement(20);
+		}
+
+		// R7: Modifier Master — completed wave with every modifier type at least once
+		if (this.saveData.modifiersSeen && this.saveData.modifiersSeen.length >= 8) {
+			this.unlockAchievement(28);
+		}
 
 		// Show scorecard
 		if (this.scorecardDoc) {
@@ -1870,6 +1978,12 @@ export class GameSystem extends createSystem({
 
 		this.persistSave();
 
+		// R7: Veteran — 50 games
+		if (this.saveData.gamesPlayed >= 50) this.unlockAchievement(29);
+
+		// R7: Clear training paths on game end
+		this.clearTrainingPaths();
+
 		// Show game over
 		if (this.gameOverDoc) {
 			this.setTxt(this.gameOverDoc, 'go-score', String(this.score));
@@ -1895,6 +2009,19 @@ export class GameSystem extends createSystem({
 			// R5: Set grade color
 			const gradeEl = this.gameOverDoc.getElementById('go-record') as UIKit.Text | undefined;
 			gradeEl?.setProperties({ color: gradeColor });
+
+			// R7: Per-shot-type breakdown on game over
+			const goShotTypes = ['standard', 'curve', 'power', 'split', 'phantom', 'multi'];
+			for (const st of goShotTypes) {
+				const entry = this.gameSessionShotStats[st];
+				if (entry && (entry.saves + entry.goals) > 0) {
+					const stTotal = entry.saves + entry.goals;
+					this.setTxt(this.gameOverDoc, 'go-stat-' + st,
+						st.charAt(0).toUpperCase() + st.slice(1) + ': ' + entry.saves + '/' + stTotal);
+				} else {
+					this.setTxt(this.gameOverDoc, 'go-stat-' + st, '');
+				}
+			}
 		}
 		this.showState('game_over');
 		playSfx('gameover');
@@ -2092,6 +2219,42 @@ export class GameSystem extends createSystem({
 		this.shots.push(shot);
 		this.waveShotsLaunched++;
 		playSfx('launch');
+
+		// R7: Training mode trajectory preview
+		if (this.mode === 'training') {
+			this.addTrainingPath(shot);
+		}
+
+		// R7: Double shots modifier — spawn buddy shot after 0.5s
+		if (this.currentModifier === 'double_shots') {
+			const buddyTargetX = target.x + (Math.random() - 0.5) * 1.0;
+			const buddyTargetY = Math.max(0.3, Math.min(GOAL_HEIGHT - 0.3, target.y + (Math.random() - 0.5) * 0.6));
+			setTimeout(() => {
+				if (this.state === 'playing' && this.waveActive) {
+					const buddyTarget = new Vector3(buddyTargetX, buddyTargetY, GOAL_Z);
+					const buddyPos = new Vector3(pos.x + (Math.random() - 0.5) * 2, pos.y, spawnZ);
+					const buddyDir = buddyTarget.clone().sub(buddyPos).normalize();
+					const buddyVel = buddyDir.multiplyScalar(speed * 0.9);
+					const buddyGeo = new SphereGeometry(SHOT_RADIUS * 0.8, 8, 6);
+					const buddyMat = new MeshStandardMaterial({
+						color, emissive: color, emissiveIntensity: 0.8,
+						transparent: true, opacity: 0.7,
+					});
+					const buddyMesh = new Mesh(buddyGeo, buddyMat);
+					buddyMesh.position.copy(buddyPos);
+					this.scene.add(buddyMesh);
+					const buddyTrail = new Group();
+					this.scene.add(buddyTrail);
+					this.shots.push({
+						mesh: buddyMesh, trail: buddyTrail, type: type!, pos: buddyPos.clone(),
+						vel: buddyVel, target: buddyTarget, speed: speed * 0.9,
+						alive: true, blocked: false, splitDone: true, phantomTimer: 0,
+						visible: true, curvePhase: 0, curveAmplitude: 0, spawnZ: buddyPos.z,
+						splitId: 0, approachSoundPlayed: false, hitsRemaining: 1, isBoss: false,
+					});
+				}
+			}, 500);
+		}
 	}
 
 	// ── R2: Multi-shot — 3 spread shots ──
@@ -2198,6 +2361,8 @@ export class GameSystem extends createSystem({
 			this.scene.remove(s.trail);
 		}
 		this.shots = [];
+		// R7: Also clear training paths
+		this.clearTrainingPaths();
 	}
 
 	// ── Collision ──
@@ -2284,6 +2449,15 @@ export class GameSystem extends createSystem({
 		this.waveSaves++;
 		this.totalSaves++;
 
+		// R7: Track per-shot-type stats (both session and career)
+		const statKey = shot.isBoss ? 'boss' : shot.type;
+		if (!this.gameSessionShotStats[statKey]) this.gameSessionShotStats[statKey] = { saves: 0, goals: 0 };
+		this.gameSessionShotStats[statKey].saves++;
+		if (this.saveData.shotStats) {
+			if (!this.saveData.shotStats[statKey]) this.saveData.shotStats[statKey] = { saves: 0, goals: 0 };
+			this.saveData.shotStats[statKey].saves++;
+		}
+
 		// Score
 		const multi = Math.floor(1 + this.combo * 0.5);
 		let base = 100;
@@ -2321,7 +2495,13 @@ export class GameSystem extends createSystem({
 			this.triggerFlash(0xffffff, 0.4, 0.5);
 			if (this.hudDoc) this.setTxt(this.hudDoc, 'status', 'BOSS DEFEATED!');
 			this.wavePreviewTimer = 2.0; // show for 2s
+			// R7: Boss Slayer achievement — track across all games
+			this.saveData.bossesDefeated = (this.saveData.bossesDefeated || 0) + 1;
+			if (this.saveData.bossesDefeated >= 5) this.unlockAchievement(24);
 		}
+
+		// R7: Dive Save achievement
+		if (this.isDiving) this.unlockAchievement(22);
 
 		// R4: DDA tracking (arcade + endless)
 		if (this.mode === 'arcade' || this.mode === 'endless') {
@@ -2333,6 +2513,8 @@ export class GameSystem extends createSystem({
 		// R6: Track endless shots blocked + internal wave progression
 		if (this.mode === 'endless') {
 			this.endlessShotsBlocked++;
+			// R7: Endless 100 achievement
+			if (this.endlessShotsBlocked >= 100) this.unlockAchievement(21);
 			if (this.endlessShotsBlocked % 10 === 0) {
 				this.endlessInternalWave++;
 				// Increase difficulty
@@ -2387,6 +2569,8 @@ export class GameSystem extends createSystem({
 		if (this.score >= 5000) this.unlockAchievement(12);
 		if (this.score >= 10000) this.unlockAchievement(13);
 		if (this.score >= 25000) this.unlockAchievement(14);
+		// R7: Score 50K
+		if (this.score >= 50000) this.unlockAchievement(27);
 
 		// R3: Split saver tracking
 		if (shot.splitId > 0) {
@@ -2411,6 +2595,15 @@ export class GameSystem extends createSystem({
 		this.comboRingFlashTimer = 0.3; // R4: flash red on combo reset
 		this.waveGoals++;
 		this.totalGoals++;
+
+		// R7: Track per-shot-type goals (both session and career)
+		const goalStatKey = shot.isBoss ? 'boss' : shot.type;
+		if (!this.gameSessionShotStats[goalStatKey]) this.gameSessionShotStats[goalStatKey] = { saves: 0, goals: 0 };
+		this.gameSessionShotStats[goalStatKey].goals++;
+		if (this.saveData.shotStats) {
+			if (!this.saveData.shotStats[goalStatKey]) this.saveData.shotStats[goalStatKey] = { saves: 0, goals: 0 };
+			this.saveData.shotStats[goalStatKey].goals++;
+		}
 		if (this.mode !== 'training' && this.mode !== 'timeattack') this.lives--;
 
 		playSfx('goal');
@@ -2596,6 +2789,10 @@ export class GameSystem extends createSystem({
 		this.activePowerUp = pu.type;
 		this.powerUpTimer = 10.0;
 		playSfx('powerup');
+
+		// R7: Track power-up types collected this game
+		this.powerUpsCollectedThisGame.add(pu.type);
+		if (this.powerUpsCollectedThisGame.size >= 4) this.unlockAchievement(23);
 
 		// Particles at collection point
 		if (this.particlesOn) {
@@ -3149,6 +3346,12 @@ export class GameSystem extends createSystem({
 		// R6: Shockwaves
 		this.updateShockwaves(dt);
 
+		// R7: Training paths
+		if (this.mode === 'training') this.updateTrainingPaths();
+
+		// R7: Goal decoration animation
+		this.updateGoalDecoration(_time);
+
 		// R6: Countdown
 		this.updateCountdown(dt);
 
@@ -3224,7 +3427,18 @@ export class GameSystem extends createSystem({
 			s.pos.z += s.vel.z * dt;
 
 			// Gravity
-			s.vel.y -= 1.5 * dt;
+			const gravMult = this.currentModifier === 'low_gravity' ? 0.2 : 1.0;
+			s.vel.y -= 1.5 * dt * gravMult;
+
+			// R7: Speed ramp — shots accelerate as they approach
+			if (this.currentModifier === 'speed_ramp') {
+				const totalDist = Math.abs(s.spawnZ - GOAL_Z);
+				const traveled = Math.abs(s.pos.z - s.spawnZ);
+				const progress = Math.min(1, totalDist > 0 ? traveled / totalDist : 0);
+				const rampMult = 1 + progress * 1.5;
+				s.vel.x *= (1 + (rampMult - 1) * dt * 0.5);
+				s.vel.z *= (1 + (rampMult - 1) * dt * 0.5);
+			}
 
 			// Curve behavior
 			if (s.type === 'curve') {
@@ -3510,6 +3724,7 @@ export class GameSystem extends createSystem({
 			for (let i = 0; i < this.accentLights.length; i++) {
 				this.accentLights[i].color.set(challengeColors[i] || 0xff4400);
 			}
+			this.applyGoalDecorationTheme(0xff6600);
 		} else if (mode === 'training') {
 			this.scene.fog = new FogExp2(0x001108, 0.02);
 			this.scene.background = new Color(0x001108);
@@ -3518,6 +3733,7 @@ export class GameSystem extends createSystem({
 			for (let i = 0; i < this.accentLights.length; i++) {
 				this.accentLights[i].color.set(trainColors[i] || 0x00ff88);
 			}
+			this.applyGoalDecorationTheme(0x00ff88);
 		} else if (mode === 'timeattack') {
 			this.scene.fog = new FogExp2(0x080011, 0.02);
 			this.scene.background = new Color(0x080011);
@@ -3526,6 +3742,7 @@ export class GameSystem extends createSystem({
 			for (let i = 0; i < this.accentLights.length; i++) {
 				this.accentLights[i].color.set(taColors[i] || 0xcc44ff);
 			}
+			this.applyGoalDecorationTheme(0xcc44ff);
 		} else if (mode === 'endless') {
 			// Endless — fiery orange-red
 			this.scene.fog = new FogExp2(0x110500, 0.02);
@@ -3535,6 +3752,7 @@ export class GameSystem extends createSystem({
 			for (let i = 0; i < this.accentLights.length; i++) {
 				this.accentLights[i].color.set(endColors[i] || 0xff6600);
 			}
+			this.applyGoalDecorationTheme(0xff6600);
 		} else {
 			// Arcade — default
 			this.scene.fog = new FogExp2(0x000811, 0.02);
@@ -3543,6 +3761,7 @@ export class GameSystem extends createSystem({
 			for (let i = 0; i < this.accentLights.length; i++) {
 				this.accentLights[i].color.set(this.originalAccentColors[i] || 0x00ffcc);
 			}
+			this.applyGoalDecorationTheme(0x00ffcc);
 		}
 	}
 
@@ -3707,6 +3926,150 @@ export class GameSystem extends createSystem({
 			this.gauntletL.position.copy(this.tmpVec);
 			this.gauntletPosL.copy(this.tmpVec);
 			this.gauntletL.visible = true;
+		}
+	}
+
+	// ── R7: Training mode trajectory preview ──
+	addTrainingPath(shot: Shot) {
+		// Max 3 paths at once
+		while (this.trainingPaths.length >= 3) {
+			const old = this.trainingPaths.shift()!;
+			this.scene.remove(old.line);
+		}
+		// Dashed line from spawn to target
+		const segments = 20;
+		const verts: number[] = [];
+		for (let i = 0; i < segments; i++) {
+			if (i % 2 === 1) continue; // skip every other for dashed effect
+			const t0 = i / segments;
+			const t1 = (i + 1) / segments;
+			verts.push(
+				shot.pos.x + (shot.target.x - shot.pos.x) * t0,
+				shot.pos.y + (shot.target.y - shot.pos.y) * t0,
+				shot.pos.z + (shot.target.z - shot.pos.z) * t0,
+				shot.pos.x + (shot.target.x - shot.pos.x) * t1,
+				shot.pos.y + (shot.target.y - shot.pos.y) * t1,
+				shot.pos.z + (shot.target.z - shot.pos.z) * t1,
+			);
+		}
+		const geo = new BufferGeometry();
+		geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
+		const trailColors: Record<string, number> = {
+			standard: 0x00ffcc, curve: 0xffaa00, power: 0xff4444,
+			split: 0xcc44ff, phantom: 0x44ccff, multi: 0xff8800,
+		};
+		const color = trailColors[shot.type] || 0x00ffcc;
+		const mat = new LineBasicMaterial({ color, transparent: true, opacity: 0.15 });
+		const line = new LineSegments(geo, mat);
+		this.scene.add(line);
+		this.trainingPaths.push({ line, shotRef: shot });
+	}
+
+	updateTrainingPaths() {
+		// Remove paths for dead shots
+		for (let i = this.trainingPaths.length - 1; i >= 0; i--) {
+			const tp = this.trainingPaths[i];
+			if (!tp.shotRef.alive) {
+				this.scene.remove(tp.line);
+				this.trainingPaths.splice(i, 1);
+			}
+		}
+	}
+
+	clearTrainingPaths() {
+		for (const tp of this.trainingPaths) {
+			this.scene.remove(tp.line);
+		}
+		this.trainingPaths = [];
+	}
+
+	// ── R7: Goal decoration ──
+	buildGoalDecoration() {
+		const hw = GOAL_WIDTH / 2;
+
+		// Corner spheres at 4 corners of goal frame
+		const corners = [
+			[-hw, 0, GOAL_Z],
+			[hw, 0, GOAL_Z],
+			[-hw, GOAL_HEIGHT, GOAL_Z],
+			[hw, GOAL_HEIGHT, GOAL_Z],
+		];
+		for (const [cx, cy, cz] of corners) {
+			const geo = new SphereGeometry(0.08, 10, 8);
+			const mat = new MeshStandardMaterial({
+				color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 1.5,
+				transparent: true, opacity: 0.9,
+			});
+			const sphere = new Mesh(geo, mat);
+			sphere.position.set(cx, cy, cz);
+			this.goalGroup.add(sphere);
+			this.goalCornerSpheres.push(sphere);
+		}
+
+		// Vertical energy lines on goal posts
+		const lineSegCount = 10;
+		for (const xPos of [-hw, hw]) {
+			const verts: number[] = [];
+			for (let i = 0; i < lineSegCount; i++) {
+				if (i % 2 === 1) continue;
+				const y0 = (i / lineSegCount) * GOAL_HEIGHT;
+				const y1 = ((i + 1) / lineSegCount) * GOAL_HEIGHT;
+				verts.push(xPos, y0, GOAL_Z - 0.02, xPos, y1, GOAL_Z - 0.02);
+			}
+			const geo = new BufferGeometry();
+			geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
+			const mat = new LineBasicMaterial({
+				color: 0x00ffcc, transparent: true, opacity: 0.3,
+			});
+			const line = new LineSegments(geo, mat);
+			this.goalGroup.add(line);
+			this.goalEnergyLines.push(line);
+		}
+
+		// Danger zone floor glow
+		const dzGeo = new BoxGeometry(GOAL_WIDTH, 0.01, 1.5);
+		const dzMat = new MeshBasicMaterial({
+			color: 0xff4444, transparent: true, opacity: 0.05,
+			side: DoubleSide, depthWrite: false,
+		});
+		this.goalDangerZone = new Mesh(dzGeo, dzMat);
+		this.goalDangerZone.position.set(0, 0.01, GOAL_Z + 0.75);
+		this.goalGroup.add(this.goalDangerZone);
+	}
+
+	updateGoalDecoration(time: number) {
+		// Corner spheres pulse with slow sine wave
+		for (const sphere of this.goalCornerSpheres) {
+			const mat = sphere.material as MeshStandardMaterial;
+			mat.emissiveIntensity = 1.2 + Math.sin(time * 2) * 0.5;
+			const scale = 1.0 + Math.sin(time * 1.5) * 0.15;
+			sphere.scale.set(scale, scale, scale);
+		}
+
+		// Energy lines pulse opacity
+		for (const line of this.goalEnergyLines) {
+			const mat = line.material as LineBasicMaterial;
+			mat.opacity = 0.2 + Math.sin(time * 3) * 0.15;
+		}
+
+		// Danger zone subtle pulse
+		if (this.goalDangerZone) {
+			const mat = this.goalDangerZone.material as MeshBasicMaterial;
+			mat.opacity = 0.03 + Math.sin(time * 2) * 0.02;
+		}
+	}
+
+	applyGoalDecorationTheme(color: number) {
+		// Update corner spheres color for mode theme
+		for (const sphere of this.goalCornerSpheres) {
+			const mat = sphere.material as MeshStandardMaterial;
+			mat.color.set(color);
+			mat.emissive.set(color);
+		}
+		// Update energy lines color
+		for (const line of this.goalEnergyLines) {
+			const mat = line.material as LineBasicMaterial;
+			mat.color.set(color);
 		}
 	}
 }
