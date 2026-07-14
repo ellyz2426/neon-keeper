@@ -1,0 +1,64 @@
+<container
+  flexDirection="column"
+  alignItems="center"
+  justifyContent="center"
+  gap="10"
+  padding="20"
+  backgroundColor="#000a15ee"
+  borderRadius="14"
+  borderColor="#00ffcc"
+  borderWidth="2"
+  width="400"
+  height="420"
+>
+  <text name="sc-title" fontSize="26" color="#00ffcc" fontWeight="bold">WAVE COMPLETE</text>
+
+  <container flexDirection="column" gap="6" width="320" marginTop="6">
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Saves</text>
+      <text name="sc-saves" fontSize="14" color="#00ffcc">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Goals Against</text>
+      <text name="sc-goals" fontSize="14" color="#ff4444">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Catches</text>
+      <text name="sc-catches" fontSize="14" color="#ffaa00">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Best Streak</text>
+      <text name="sc-streak" fontSize="14" color="#cc44ff">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4" borderTopWidth="1" borderColor="#223344">
+      <text fontSize="18" color="#ffffff" fontWeight="bold">Score</text>
+      <text name="sc-score" fontSize="18" color="#00ffcc" fontWeight="bold">0</text>
+    </container>
+  </container>
+
+  <container flexDirection="row" gap="10" marginTop="8">
+    <text
+      name="sc-continue"
+      fontSize="18"
+      color="#000000"
+      backgroundColor="#00ffcc"
+      padding="10"
+      borderRadius="8"
+      textAlign="center"
+      cursor="pointer"
+      width="140"
+    >NEXT WAVE</text>
+    <text
+      name="sc-menu"
+      fontSize="14"
+      color="#446688"
+      padding="10"
+      borderRadius="6"
+      textAlign="center"
+      cursor="pointer"
+      borderColor="#446688"
+      borderWidth="1"
+      width="100"
+    >MENU</text>
+  </container>
+</container>

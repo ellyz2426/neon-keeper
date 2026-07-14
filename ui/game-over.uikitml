@@ -1,0 +1,70 @@
+<container
+  flexDirection="column"
+  alignItems="center"
+  justifyContent="center"
+  gap="10"
+  padding="20"
+  backgroundColor="#000a15ee"
+  borderRadius="14"
+  borderColor="#ff4444"
+  borderWidth="2"
+  width="400"
+  height="460"
+>
+  <text fontSize="30" color="#ff4444" fontWeight="bold">GAME OVER</text>
+
+  <container flexDirection="column" gap="6" width="320" marginTop="6">
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Final Score</text>
+      <text name="go-score" fontSize="18" color="#00ffcc" fontWeight="bold">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Waves Survived</text>
+      <text name="go-waves" fontSize="14" color="#ffaa00">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Total Saves</text>
+      <text name="go-saves" fontSize="14" color="#00ccff">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Catches</text>
+      <text name="go-catches" fontSize="14" color="#ffaa00">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Best Streak</text>
+      <text name="go-streak" fontSize="14" color="#cc44ff">0</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="4">
+      <text fontSize="14" color="#558899">Save Rate</text>
+      <text name="go-rate" fontSize="14" color="#44cc44">0%</text>
+    </container>
+  </container>
+
+  <text name="go-record" fontSize="12" color="#ffaa00" marginTop="4"></text>
+
+  <container flexDirection="row" gap="10" marginTop="8">
+    <text
+      name="go-retry"
+      fontSize="18"
+      color="#000000"
+      backgroundColor="#00ffcc"
+      padding="10"
+      borderRadius="8"
+      textAlign="center"
+      cursor="pointer"
+      width="140"
+    >RETRY</text>
+    <text
+      name="go-menu"
+      fontSize="14"
+      color="#446688"
+      padding="10"
+      borderRadius="6"
+      textAlign="center"
+      cursor="pointer"
+      borderColor="#446688"
+      borderWidth="1"
+      width="100"
+    >MENU</text>
+  </container>
+</container>

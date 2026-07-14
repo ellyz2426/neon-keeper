@@ -1,0 +1,72 @@
+<container
+  flexDirection="column"
+  alignItems="center"
+  justifyContent="center"
+  gap="14"
+  padding="24"
+  backgroundColor="#000a15ee"
+  borderRadius="14"
+  borderColor="#00ccff"
+  borderWidth="2"
+  width="440"
+  height="500"
+>
+  <text name="title" fontSize="38" color="#00ffcc" fontWeight="bold">NEON KEEPER</text>
+  <text fontSize="14" color="#558899">VR Goalkeeper Challenge</text>
+
+  <container flexDirection="column" gap="8" marginTop="16" width="300">
+    <text
+      name="btn-play"
+      fontSize="22"
+      color="#000000"
+      backgroundColor="#00ffcc"
+      padding="12"
+      borderRadius="8"
+      textAlign="center"
+      cursor="pointer"
+      hover-backgroundColor="#00ffaa"
+    >PLAY</text>
+
+    <text
+      name="btn-settings"
+      fontSize="16"
+      color="#00ccff"
+      backgroundColor="#001a2a"
+      padding="8"
+      borderRadius="6"
+      textAlign="center"
+      cursor="pointer"
+      borderColor="#00ccff"
+      borderWidth="1"
+    >SETTINGS</text>
+
+    <text
+      name="btn-achieve"
+      fontSize="16"
+      color="#ffaa00"
+      backgroundColor="#1a1200"
+      padding="8"
+      borderRadius="6"
+      textAlign="center"
+      cursor="pointer"
+      borderColor="#ffaa00"
+      borderWidth="1"
+    >ACHIEVEMENTS</text>
+
+    <text
+      name="btn-stats"
+      fontSize="16"
+      color="#aa88ff"
+      backgroundColor="#0f0a1a"
+      padding="8"
+      borderRadius="6"
+      textAlign="center"
+      cursor="pointer"
+      borderColor="#aa88ff"
+      borderWidth="1"
+    >STATS</text>
+  </container>
+
+  <text name="rank-label" fontSize="12" color="#446688" marginTop="8">Rank: Rookie</text>
+  <text name="best-label" fontSize="11" color="#335566">Best Wave: --</text>
+</container>

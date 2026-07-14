@@ -1,0 +1,94 @@
+<container
+  flexDirection="column"
+  alignItems="center"
+  justifyContent="center"
+  gap="10"
+  padding="20"
+  backgroundColor="#000a15ee"
+  borderRadius="14"
+  borderColor="#00ccff"
+  borderWidth="2"
+  width="400"
+  height="400"
+>
+  <text fontSize="26" color="#00ccff" fontWeight="bold">SETTINGS</text>
+
+  <container flexDirection="column" gap="10" width="320" marginTop="8">
+    <container flexDirection="row" justifyContent="space-between" alignItems="center">
+      <text fontSize="14" color="#558899">Difficulty</text>
+      <text
+        name="set-diff"
+        fontSize="14"
+        color="#00ffcc"
+        backgroundColor="#001a2a"
+        padding="6"
+        borderRadius="4"
+        cursor="pointer"
+        borderColor="#00ccff"
+        borderWidth="1"
+        width="100"
+        textAlign="center"
+      >Normal</text>
+    </container>
+
+    <container flexDirection="row" justifyContent="space-between" alignItems="center">
+      <text fontSize="14" color="#558899">SFX Volume</text>
+      <text
+        name="set-sfx"
+        fontSize="14"
+        color="#00ffcc"
+        backgroundColor="#001a2a"
+        padding="6"
+        borderRadius="4"
+        cursor="pointer"
+        borderColor="#00ccff"
+        borderWidth="1"
+        width="100"
+        textAlign="center"
+      >100%</text>
+    </container>
+
+    <container flexDirection="row" justifyContent="space-between" alignItems="center">
+      <text fontSize="14" color="#558899">Music</text>
+      <text
+        name="set-music"
+        fontSize="14"
+        color="#00ffcc"
+        backgroundColor="#001a2a"
+        padding="6"
+        borderRadius="4"
+        cursor="pointer"
+        borderColor="#00ccff"
+        borderWidth="1"
+        width="100"
+        textAlign="center"
+      >ON</text>
+    </container>
+
+    <container flexDirection="row" justifyContent="space-between" alignItems="center">
+      <text fontSize="14" color="#558899">Particles</text>
+      <text
+        name="set-particles"
+        fontSize="14"
+        color="#00ffcc"
+        backgroundColor="#001a2a"
+        padding="6"
+        borderRadius="4"
+        cursor="pointer"
+        borderColor="#00ccff"
+        borderWidth="1"
+        width="100"
+        textAlign="center"
+      >ON</text>
+    </container>
+  </container>
+
+  <text
+    name="set-back"
+    fontSize="14"
+    color="#446688"
+    marginTop="10"
+    cursor="pointer"
+    padding="6"
+  >&lt; BACK</text>
+</container>

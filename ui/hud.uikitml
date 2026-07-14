@@ -1,0 +1,34 @@
+<container
+  flexDirection="column"
+  alignItems="center"
+  gap="4"
+  padding="10"
+  backgroundColor="#000810cc"
+  borderRadius="8"
+  borderColor="#00ccff66"
+  borderWidth="1"
+  width="320"
+  height="80"
+>
+  <container flexDirection="row" justifyContent="space-between" width="290" gap="6">
+    <container flexDirection="column" alignItems="center" gap="1">
+      <text fontSize="10" color="#558899">SCORE</text>
+      <text name="score" fontSize="22" color="#00ffcc" fontWeight="bold">0</text>
+    </container>
+    <container flexDirection="column" alignItems="center" gap="1">
+      <text fontSize="10" color="#558899">WAVE</text>
+      <text name="wave" fontSize="22" color="#ffaa00" fontWeight="bold">1</text>
+    </container>
+    <container flexDirection="column" alignItems="center" gap="1">
+      <text fontSize="10" color="#558899">COMBO</text>
+      <text name="combo" fontSize="22" color="#cc44ff" fontWeight="bold">x1</text>
+    </container>
+    <container flexDirection="column" alignItems="center" gap="1">
+      <text fontSize="10" color="#558899">LIVES</text>
+      <text name="lives" fontSize="22" color="#ff4444" fontWeight="bold">3</text>
+    </container>
+  </container>
+  <container flexDirection="row" justifyContent="center" width="290">
+    <text name="timer" fontSize="11" color="#446688">--</text>
+  </container>
+</container>

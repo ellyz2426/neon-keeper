@@ -1,0 +1,86 @@
+<container
+  flexDirection="column"
+  alignItems="center"
+  justifyContent="center"
+  gap="10"
+  padding="20"
+  backgroundColor="#000a15ee"
+  borderRadius="14"
+  borderColor="#00ccff"
+  borderWidth="2"
+  width="440"
+  height="520"
+>
+  <text fontSize="28" color="#00ffcc" fontWeight="bold">SELECT MODE</text>
+
+  <container flexDirection="column" gap="6" marginTop="10" width="340">
+    <container
+      name="btn-arcade"
+      flexDirection="column"
+      padding="10"
+      backgroundColor="#001a2a"
+      borderColor="#00ffcc"
+      borderWidth="1"
+      borderRadius="8"
+      cursor="pointer"
+      gap="2"
+    >
+      <text fontSize="18" color="#00ffcc" fontWeight="bold">ARCADE</text>
+      <text fontSize="11" color="#558899">Endless waves - 3 lives - climb the leaderboard</text>
+    </container>
+
+    <container
+      name="btn-challenge"
+      flexDirection="column"
+      padding="10"
+      backgroundColor="#1a1200"
+      borderColor="#ffaa00"
+      borderWidth="1"
+      borderRadius="8"
+      cursor="pointer"
+      gap="2"
+    >
+      <text fontSize="18" color="#ffaa00" fontWeight="bold">CHALLENGE</text>
+      <text fontSize="11" color="#887744">10 preset patterns - no mistakes allowed</text>
+    </container>
+
+    <container
+      name="btn-training"
+      flexDirection="column"
+      padding="10"
+      backgroundColor="#0a1a0a"
+      borderColor="#44cc44"
+      borderWidth="1"
+      borderRadius="8"
+      cursor="pointer"
+      gap="2"
+    >
+      <text fontSize="18" color="#44cc44" fontWeight="bold">TRAINING</text>
+      <text fontSize="11" color="#448844">Slow speed - practice your reflexes</text>
+    </container>
+
+    <container
+      name="btn-timeattack"
+      flexDirection="column"
+      padding="10"
+      backgroundColor="#1a0020"
+      borderColor="#cc44ff"
+      borderWidth="1"
+      borderRadius="8"
+      cursor="pointer"
+      gap="2"
+    >
+      <text fontSize="18" color="#cc44ff" fontWeight="bold">TIME ATTACK</text>
+      <text fontSize="11" color="#885599">60 seconds - save as many as you can</text>
+    </container>
+  </container>
+
+  <text
+    name="btn-back"
+    fontSize="14"
+    color="#446688"
+    marginTop="8"
+    cursor="pointer"
+    padding="6"
+  >&lt; BACK</text>
+</container>
