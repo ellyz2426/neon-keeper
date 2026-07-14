@@ -10,18 +10,13 @@
   ],
   "aiMode": "agent",
   "browser": {
-    "status": "disconnected",
-    "connected": false,
+    "status": "connected",
+    "connected": true,
     "commandReady": false,
-    "connectedClientCount": 0,
-    "lastTransitionAt": "2026-07-14T21:21:37.251Z",
-    "lastBridgeConnectedAt": "2026-07-14T21:21:33.701Z",
-    "lastError": {
-      "cause": "connection_lost",
-      "message": "Managed browser runtime disconnected from the MCP bridge.",
-      "at": "2026-07-14T21:21:37.251Z"
-    }
+    "connectedClientCount": 1,
+    "lastTransitionAt": "2026-07-14T21:22:24.831Z",
+    "lastBridgeConnectedAt": "2026-07-14T21:22:24.831Z"
   },
   "registeredAt": "2026-07-14T20:17:58.692Z",
-  "updatedAt": "2026-07-14T21:21:37.253Z"
+  "updatedAt": "2026-07-14T21:22:24.831Z"
 }

@@ -339,7 +339,7 @@ interface MusicNodes {
 
 let musicNodes: MusicNodes | null = null;
 
-function startMusic(waveNum = 1) {
+function startMusic(waveNum = 1, skinName = 'Neon Classic') {
 	try {
 		if (musicNodes) return; // already playing
 		const ctx = getAudioCtx();
@@ -348,18 +348,29 @@ function startMusic(waveNum = 1) {
 		masterGain.gain.setValueAtTime(0.5, ctx.currentTime);
 		masterGain.connect(ctx.destination);
 
-		// Bass drone — 55 Hz sine
+		// R9: Per-arena-skin music themes
+		const skinMusics: Record<string, { bass: number; pads: number[]; arp: number[] }> = {
+			'Neon Classic': { bass: 55, pads: [146.83, 185, 220], arp: [110, 146.83, 164.81, 220] },
+			'Cyber Red': { bass: 49, pads: [130.81, 164.81, 196], arp: [98, 130.81, 155.56, 196] },
+			'Ocean Deep': { bass: 65.41, pads: [164.81, 196, 246.94], arp: [130.81, 164.81, 196, 261.63] },
+			'Void': { bass: 41.2, pads: [123.47, 155.56, 185], arp: [82.41, 123.47, 146.83, 185] },
+			'Solar Flare': { bass: 73.42, pads: [174.61, 220, 261.63], arp: [146.83, 174.61, 220, 293.66] },
+			'Frozen': { bass: 61.74, pads: [155.56, 196, 233.08], arp: [123.47, 155.56, 185, 246.94] },
+		};
+		const theme = skinMusics[skinName] || skinMusics['Neon Classic'];
+
+		// Bass drone — themed frequency
 		const bassOsc = ctx.createOscillator();
 		bassOsc.type = 'sine';
-		bassOsc.frequency.setValueAtTime(55, ctx.currentTime);
+		bassOsc.frequency.setValueAtTime(theme.bass, ctx.currentTime);
 		const bassGain = ctx.createGain();
 		bassGain.gain.setValueAtTime(0.04, ctx.currentTime);
 		bassOsc.connect(bassGain);
 		bassGain.connect(masterGain);
 		bassOsc.start();
 
-		// Pad — 3 sine oscillators at chord tones with slow LFO detune
-		const padFreqs = [146.83, 185, 220];
+		// Pad — 3 sine oscillators at themed chord tones with slow LFO detune
+		const padFreqs = theme.pads;
 		const padOscs: OscillatorNode[] = [];
 		const padGains: GainNode[] = [];
 		const padLFO = ctx.createOscillator();
@@ -384,8 +395,8 @@ function startMusic(waveNum = 1) {
 			padGains.push(pGain);
 		}
 
-		// Arpeggio — sequenced notes
-		const arpNotes = [110, 146.83, 164.81, 220];
+		// Arpeggio — sequenced themed notes
+		const arpNotes = theme.arp;
 		let arpIndex = 0;
 		const arpOsc = ctx.createOscillator();
 		arpOsc.type = 'triangle';
@@ -1906,7 +1917,7 @@ export class GameSystem extends createSystem({
 		// R3: Start generative music (replaces old ambient)
 		if (this.musicOn) {
 			stopMusic();
-			startMusic(this.wave);
+			startMusic(this.wave, this.arenaSkin);
 		}
 
 		// R3: Reset split tracker
