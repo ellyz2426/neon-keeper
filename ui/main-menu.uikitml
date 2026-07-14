@@ -65,6 +65,19 @@
       borderColor="#aa88ff"
       borderWidth="1"
     >STATS</text>
+
+    <text
+      name="btn-leaderboard"
+      fontSize="16"
+      color="#00ffcc"
+      backgroundColor="#001a1a"
+      padding="8"
+      borderRadius="6"
+      textAlign="center"
+      cursor="pointer"
+      borderColor="#00ffcc"
+      borderWidth="1"
+    >LEADERBOARD</text>
   </container>
 
   <text name="rank-label" fontSize="12" color="#446688" marginTop="8">Rank: Rookie</text>

@@ -628,7 +628,7 @@ export class GameSystem extends createSystem({
 	lbActiveTab: 'arcade' | 'challenge' | 'timeattack' = 'arcade';
 
 	// ── R6: Save shockwave rings ──
-	shockwaves: { mesh: Mesh; life: number; maxLife: number }[] = [];
+	shockwaves: { mesh: LineSegments; life: number; maxLife: number }[] = [];
 
 	// ── Save data ──
 	saveData!: SaveData;
@@ -1494,7 +1494,7 @@ export class GameSystem extends createSystem({
 		this.waveCatches = 0;
 		this.waveShotsLaunched = 0;
 		this.shotTimer = 1.0; // initial delay
-		this.waveActive = true;
+		this.waveActive = false; // R6: wait for countdown
 		this.powerUpSpawnedThisWave = false;
 
 		// R3: Reset split tracker per wave
@@ -1568,6 +1568,9 @@ export class GameSystem extends createSystem({
 		if (this.hudDoc) {
 			this.setTxt(this.hudDoc, 'status', previewText);
 		}
+
+		// R6: Start countdown (wave goes active after countdown ends)
+		this.startCountdown();
 
 		this.updateHud();
 	}
@@ -2028,6 +2031,10 @@ export class GameSystem extends createSystem({
 
 		// Particles
 		if (this.particlesOn) this.spawnSaveParticles(shot.pos, shot.type === 'power' ? 0xff4444 : 0x00ffcc);
+
+		// R6: Arena pulse and shockwave on save
+		this.triggerArenaPulse(shot.type === 'power' ? 0xff4444 : 0x00ffcc);
+		if (this.particlesOn) this.spawnShockwave(shot.pos, 0x00ffcc);
 
 		// R2: Score popup
 		const popColor = isCatch ? '#ffdd00' : '#00ffcc';
@@ -2624,6 +2631,107 @@ export class GameSystem extends createSystem({
 		this.warningArrows = [];
 	}
 
+	// ── R6: Arena reactivity ──
+	updateArenaReactivity(dt: number, time: number) {
+		// Floor grid color shifts based on combo level
+		const comboLevel = Math.min(this.combo, 20);
+		let gridColor: Color;
+		if (comboLevel < 3) {
+			gridColor = new Color(0x003344);
+		} else if (comboLevel < 8) {
+			gridColor = new Color(0x003344).lerp(new Color(0x004466), (comboLevel - 3) / 5);
+		} else if (comboLevel < 15) {
+			gridColor = new Color(0x004466).lerp(new Color(0x006644), (comboLevel - 8) / 7);
+		} else {
+			gridColor = new Color(0x006644).lerp(new Color(0x664400), (comboLevel - 15) / 5);
+		}
+		// Pulse effect
+		const pulse = 1.0 + Math.sin(time * (2 + comboLevel * 0.3)) * 0.15;
+		const gridOpacity = (0.25 + comboLevel * 0.02) * pulse;
+		this.floorGridMat.color.copy(gridColor);
+		this.floorGridMat.opacity = Math.min(0.6, gridOpacity);
+
+		// Arena pulse from saves (decay)
+		if (this.arenaPulseTimer > 0) {
+			this.arenaPulseTimer -= dt;
+			const t = Math.max(0, this.arenaPulseTimer / 0.4);
+			const pulseColor = new Color(this.arenaPulseColor);
+			const baseColor = new Color(0x003344);
+			this.floorGridMat.color.copy(baseColor).lerp(pulseColor, t * 0.5);
+			this.floorGridMat.opacity = Math.min(0.7, gridOpacity + t * 0.2);
+		}
+	}
+
+	triggerArenaPulse(color: number) {
+		this.arenaPulseTimer = 0.4;
+		this.arenaPulseColor = color;
+	}
+
+	// ── R6: Save shockwave ring ──
+	spawnShockwave(pos: Vector3, color: number) {
+		const segments = 32;
+		const verts: number[] = [];
+		for (let i = 0; i < segments; i++) {
+			const a0 = (i / segments) * Math.PI * 2;
+			const a1 = ((i + 1) / segments) * Math.PI * 2;
+			verts.push(Math.cos(a0) * 0.1, 0, Math.sin(a0) * 0.1);
+			verts.push(Math.cos(a1) * 0.1, 0, Math.sin(a1) * 0.1);
+		}
+		const geo = new BufferGeometry();
+		geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
+		const mat = new LineBasicMaterial({
+			color, transparent: true, opacity: 0.6,
+		});
+		const mesh = new LineSegments(geo, mat);
+		mesh.position.set(pos.x, 0.05, pos.z);
+		this.scene.add(mesh);
+		this.shockwaves.push({ mesh, life: 0.8, maxLife: 0.8 });
+	}
+
+	updateShockwaves(dt: number) {
+		for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+			const sw = this.shockwaves[i];
+			sw.life -= dt;
+			if (sw.life <= 0) {
+				this.scene.remove(sw.mesh);
+				this.shockwaves.splice(i, 1);
+				continue;
+			}
+			const progress = 1 - sw.life / sw.maxLife;
+			const scale = 1 + progress * 8; // expand from 0.1 radius to ~0.9
+			sw.mesh.scale.set(scale, 1, scale);
+			const mat = sw.mesh.material as LineBasicMaterial;
+			mat.opacity = 0.6 * (sw.life / sw.maxLife);
+		}
+	}
+
+	// ── R6: Wave countdown ──
+	startCountdown() {
+		this.countdownActive = true;
+		this.countdownTimer = 2.0; // 2 second countdown (3-2-1 compressed)
+		if (this.hudDoc) {
+			this.setTxt(this.hudDoc, 'status', 'GET READY...');
+		}
+	}
+
+	updateCountdown(dt: number) {
+		if (!this.countdownActive) return;
+		this.countdownTimer -= dt;
+		if (this.countdownTimer <= 0) {
+			this.countdownActive = false;
+			this.countdownTimer = 0;
+			this.waveActive = true; // R6: now shots can spawn
+			if (this.hudDoc) this.setTxt(this.hudDoc, 'status', 'GO!');
+			this.wavePreviewTimer = 0.5;
+			return;
+		}
+		// Show countdown number
+		const num = Math.ceil(this.countdownTimer);
+		if (this.hudDoc) {
+			this.setTxt(this.hudDoc, 'status', String(num));
+		}
+	}
+
 	// ── Update ──
 	update(delta: number, _time: number) {
 		// R2: Orbit spheres animate even when not playing (ambient decoration)
@@ -2697,6 +2805,15 @@ export class GameSystem extends createSystem({
 
 		// R5: Warning arrows
 		this.updateWarningArrows();
+
+		// R6: Arena reactivity
+		this.updateArenaReactivity(dt, _time);
+
+		// R6: Shockwaves
+		this.updateShockwaves(dt);
+
+		// R6: Countdown
+		this.updateCountdown(dt);
 
 		// R4: Modifier display timer
 		if (this.modifierDisplayTimer > 0) {
