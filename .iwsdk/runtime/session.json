@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "sessionId": "ec652ba5-1667-4d5d-80fe-3d000af9643e",
+  "sessionId": "33e4c0c8-a0d8-43a8-86a4-3778080c2bfa",
   "workspaceRoot": "/home/hatch/workspace/neon-keeper",
-  "pid": 9925,
+  "pid": 12099,
   "port": 5173,
   "localUrl": "http://localhost:5173/",
   "networkUrls": [
@@ -14,10 +14,10 @@
     "connected": true,
     "commandReady": true,
     "connectedClientCount": 1,
-    "lastTransitionAt": "2026-07-14T19:30:52.823Z",
-    "lastBridgeConnectedAt": "2026-07-14T19:30:21.431Z",
-    "lastCommandReadyAt": "2026-07-14T19:30:52.823Z"
+    "lastTransitionAt": "2026-07-14T19:39:59.762Z",
+    "lastBridgeConnectedAt": "2026-07-14T19:39:25.161Z",
+    "lastCommandReadyAt": "2026-07-14T19:39:59.762Z"
   },
-  "registeredAt": "2026-07-14T19:30:19.322Z",
-  "updatedAt": "2026-07-14T19:30:52.835Z"
+  "registeredAt": "2026-07-14T19:39:23.414Z",
+  "updatedAt": "2026-07-14T19:39:59.775Z"
 }

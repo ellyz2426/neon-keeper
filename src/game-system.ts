@@ -34,6 +34,8 @@ interface Shot {
 	curvePhase: number;
 	curveAmplitude: number;
 	spawnZ: number;
+	splitId: number;
+	approachSoundPlayed: boolean;
 }
 
 interface SaveData {
@@ -167,27 +169,196 @@ function playSfx(type: string, vol = 0.3) {
 }
 
 function playAmbient() {
+	// Legacy stub — replaced by MusicGenerator in R3
+}
+
+// ── R3: Per-shot-type approach sounds ──
+function playApproachSfx(type: ShotType) {
 	try {
 		const ctx = getAudioCtx();
 		const g = ctx.createGain();
-		g.gain.setValueAtTime(0.04, ctx.currentTime);
+		g.gain.setValueAtTime(0.1, ctx.currentTime);
 		g.connect(ctx.destination);
-
 		const o = ctx.createOscillator();
-		o.type = 'sine';
-		o.frequency.setValueAtTime(55, ctx.currentTime);
-		o.connect(g);
 
-		const o2 = ctx.createOscillator();
-		o2.type = 'sine';
-		o2.frequency.setValueAtTime(82.5, ctx.currentTime);
-		const g2 = ctx.createGain();
-		g2.gain.setValueAtTime(0.025, ctx.currentTime);
-		g2.connect(ctx.destination);
-		o2.connect(g2);
+		if (type === 'standard') {
+			o.type = 'sine';
+			o.frequency.setValueAtTime(300, ctx.currentTime);
+			o.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.1);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+			o.connect(g); o.start(); o.stop(ctx.currentTime + 0.12);
+		} else if (type === 'curve') {
+			o.type = 'triangle';
+			o.frequency.setValueAtTime(400, ctx.currentTime);
+			// Rapid vibrato via frequency modulation
+			const lfo = ctx.createOscillator();
+			const lfoGain = ctx.createGain();
+			lfo.frequency.value = 20;
+			lfoGain.gain.value = 80;
+			lfo.connect(lfoGain);
+			lfoGain.connect(o.frequency);
+			lfo.start(); lfo.stop(ctx.currentTime + 0.15);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.17);
+			o.connect(g); o.start(); o.stop(ctx.currentTime + 0.17);
+		} else if (type === 'power') {
+			o.type = 'sawtooth';
+			o.frequency.setValueAtTime(80, ctx.currentTime);
+			o.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.2);
+			g.gain.setValueAtTime(0.12, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+			o.connect(g); o.start(); o.stop(ctx.currentTime + 0.22);
+		} else if (type === 'phantom') {
+			o.type = 'sine';
+			o.frequency.setValueAtTime(2000, ctx.currentTime);
+			o.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.1);
+			g.gain.setValueAtTime(0.06, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+			o.connect(g); o.start(); o.stop(ctx.currentTime + 0.12);
+		} else if (type === 'split') {
+			o.type = 'square';
+			o.frequency.setValueAtTime(800, ctx.currentTime);
+			o.frequency.setValueAtTime(1200, ctx.currentTime + 0.03);
+			o.frequency.setValueAtTime(600, ctx.currentTime + 0.06);
+			o.frequency.setValueAtTime(1000, ctx.currentTime + 0.08);
+			g.gain.setValueAtTime(0.08, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+			o.connect(g); o.start(); o.stop(ctx.currentTime + 0.12);
+		} else {
+			// multi / default — sizzle
+			o.type = 'sawtooth';
+			o.frequency.setValueAtTime(3000, ctx.currentTime);
+			o.frequency.exponentialRampToValueAtTime(1500, ctx.currentTime + 0.1);
+			g.gain.setValueAtTime(0.07, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+			o.connect(g); o.start(); o.stop(ctx.currentTime + 0.12);
+		}
+	} catch { /* audio not available */ }
+}
 
-		o.start();
-		o2.start();
+// ── R3: Generative background music ──
+interface MusicNodes {
+	bassOsc: OscillatorNode;
+	bassGain: GainNode;
+	padOscs: OscillatorNode[];
+	padGains: GainNode[];
+	padLFO: OscillatorNode;
+	arpOsc: OscillatorNode;
+	arpGain: GainNode;
+	arpIntervalId: number;
+	masterGain: GainNode;
+}
+
+let musicNodes: MusicNodes | null = null;
+
+function startMusic(waveNum = 1) {
+	try {
+		if (musicNodes) return; // already playing
+		const ctx = getAudioCtx();
+
+		const masterGain = ctx.createGain();
+		masterGain.gain.setValueAtTime(0.5, ctx.currentTime);
+		masterGain.connect(ctx.destination);
+
+		// Bass drone — 55 Hz sine
+		const bassOsc = ctx.createOscillator();
+		bassOsc.type = 'sine';
+		bassOsc.frequency.setValueAtTime(55, ctx.currentTime);
+		const bassGain = ctx.createGain();
+		bassGain.gain.setValueAtTime(0.04, ctx.currentTime);
+		bassOsc.connect(bassGain);
+		bassGain.connect(masterGain);
+		bassOsc.start();
+
+		// Pad — 3 sine oscillators at chord tones with slow LFO detune
+		const padFreqs = [146.83, 185, 220];
+		const padOscs: OscillatorNode[] = [];
+		const padGains: GainNode[] = [];
+		const padLFO = ctx.createOscillator();
+		padLFO.type = 'sine';
+		padLFO.frequency.setValueAtTime(0.15, ctx.currentTime);
+		padLFO.start();
+
+		for (const freq of padFreqs) {
+			const osc = ctx.createOscillator();
+			osc.type = 'sine';
+			osc.frequency.setValueAtTime(freq, ctx.currentTime);
+			const lfoGain = ctx.createGain();
+			lfoGain.gain.setValueAtTime(3, ctx.currentTime); // ±3 Hz detune
+			padLFO.connect(lfoGain);
+			lfoGain.connect(osc.frequency);
+			const pGain = ctx.createGain();
+			pGain.gain.setValueAtTime(0.02, ctx.currentTime);
+			osc.connect(pGain);
+			pGain.connect(masterGain);
+			osc.start();
+			padOscs.push(osc);
+			padGains.push(pGain);
+		}
+
+		// Arpeggio — sequenced notes
+		const arpNotes = [110, 146.83, 164.81, 220];
+		let arpIndex = 0;
+		const arpOsc = ctx.createOscillator();
+		arpOsc.type = 'triangle';
+		arpOsc.frequency.setValueAtTime(arpNotes[0], ctx.currentTime);
+		const arpGain = ctx.createGain();
+		arpGain.gain.setValueAtTime(0.03, ctx.currentTime);
+		arpOsc.connect(arpGain);
+		arpGain.connect(masterGain);
+		arpOsc.start();
+
+		const tempoMs = Math.max(150, 250 - (waveNum - 1) * 10);
+		const arpIntervalId = window.setInterval(() => {
+			arpIndex = (arpIndex + 1) % arpNotes.length;
+			try {
+				const now = ctx.currentTime;
+				arpOsc.frequency.setValueAtTime(arpNotes[arpIndex], now);
+				arpGain.gain.setValueAtTime(0.03, now);
+				arpGain.gain.exponentialRampToValueAtTime(0.005, now + tempoMs / 1000 * 0.8);
+			} catch { /* */ }
+		}, tempoMs);
+
+		musicNodes = { bassOsc, bassGain, padOscs, padGains, padLFO, arpOsc, arpGain, arpIntervalId, masterGain };
+	} catch { /* audio not available */ }
+}
+
+function stopMusic() {
+	if (!musicNodes) return;
+	try {
+		clearInterval(musicNodes.arpIntervalId);
+		const ctx = getAudioCtx();
+		const now = ctx.currentTime;
+		musicNodes.masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+		const nodes = musicNodes;
+		setTimeout(() => {
+			try {
+				nodes.bassOsc.stop();
+				nodes.arpOsc.stop();
+				nodes.padLFO.stop();
+				for (const p of nodes.padOscs) p.stop();
+			} catch { /* */ }
+		}, 600);
+		musicNodes = null;
+	} catch { /* */ }
+}
+
+function updateMusicTempo(waveNum: number) {
+	if (!musicNodes) return;
+	try {
+		clearInterval(musicNodes.arpIntervalId);
+		const ctx = getAudioCtx();
+		const arpNotes = [110, 146.83, 164.81, 220];
+		let arpIndex = 0;
+		const tempoMs = Math.max(150, 250 - (waveNum - 1) * 10);
+		musicNodes.arpIntervalId = window.setInterval(() => {
+			arpIndex = (arpIndex + 1) % arpNotes.length;
+			try {
+				const now = ctx.currentTime;
+				musicNodes!.arpOsc.frequency.setValueAtTime(arpNotes[arpIndex], now);
+				musicNodes!.arpGain.gain.setValueAtTime(0.03, now);
+				musicNodes!.arpGain.gain.exponentialRampToValueAtTime(0.005, now + tempoMs / 1000 * 0.8);
+			} catch { /* */ }
+		}, tempoMs);
 	} catch { /* */ }
 }
 
@@ -301,6 +472,24 @@ export class GameSystem extends createSystem({
 	// ── R2: Wave preview ──
 	wavePreviewTimer = 0;
 
+	// ── R3: Split saver tracking ──
+	splitIdCounter = 0;
+	splitSaveTracker: Map<number, number> = new Map();
+
+	// ── R3: Challenge queue ──
+	challengeQueue: ShotType[] = [];
+
+	// ── R3: Environment theme refs ──
+	ambientLight!: AmbientLight;
+	accentLights: PointLight[] = [];
+	originalAccentColors: number[] = [];
+
+	// ── R3: Goal net ripple ──
+	goalNet!: LineSegments;
+	goalNetOrigZ: Float32Array | null = null;
+	netRippleTimer = 0;
+	netRippleActive = false;
+
 	// ── Save data ──
 	saveData!: SaveData;
 
@@ -341,6 +530,7 @@ export class GameSystem extends createSystem({
 		// Lights
 		const amb = new AmbientLight(0x112233, 0.4);
 		this.scene.add(amb);
+		this.ambientLight = amb;
 		const dir = new DirectionalLight(0x0088ff, 0.5);
 		dir.position.set(5, 10, 5);
 		this.scene.add(dir);
@@ -357,6 +547,8 @@ export class GameSystem extends createSystem({
 			const pl = new PointLight(a.color, 2, 25);
 			pl.position.set(a.pos[0], a.pos[1], a.pos[2]);
 			this.scene.add(pl);
+			this.accentLights.push(pl);
+			this.originalAccentColors.push(a.color);
 		}
 
 		// Floor grid
@@ -448,7 +640,14 @@ export class GameSystem extends createSystem({
 		const netGeo = new BufferGeometry();
 		netGeo.setAttribute('position', new Float32BufferAttribute(netVerts, 3));
 		const netMat = new LineBasicMaterial({ color: 0x004466, transparent: true, opacity: 0.15 });
-		this.goalGroup.add(new LineSegments(netGeo, netMat));
+		this.goalNet = new LineSegments(netGeo, netMat);
+		this.goalGroup.add(this.goalNet);
+		// R3: Store original z positions for net ripple
+		const posAttr = netGeo.getAttribute('position');
+		this.goalNetOrigZ = new Float32Array(posAttr.count);
+		for (let i = 0; i < posAttr.count; i++) {
+			this.goalNetOrigZ[i] = (posAttr as any).getZ(i);
+		}
 
 		// Goal line
 		const lineVerts = [-hw, 0.01, GOAL_Z, hw, 0.01, GOAL_Z];
@@ -912,6 +1111,8 @@ export class GameSystem extends createSystem({
 		if (s === 'menu') {
 			this.updateMenuLabels();
 			this.clearShots();
+			this.applyModeTheme('arcade'); // R3: restore default theme
+			stopMusic(); // R3: stop generative music
 		}
 	}
 
@@ -935,10 +1136,18 @@ export class GameSystem extends createSystem({
 
 		this.timeLeft = mode === 'timeattack' ? 60 : 0;
 
-		if (!this.ambientStarted && this.musicOn) {
-			playAmbient();
-			this.ambientStarted = true;
+		// R3: Apply mode-specific environment theme
+		this.applyModeTheme(mode);
+
+		// R3: Start generative music (replaces old ambient)
+		if (this.musicOn) {
+			stopMusic();
+			startMusic(this.wave);
 		}
+
+		// R3: Reset split tracker
+		this.splitSaveTracker.clear();
+		this.splitIdCounter = 0;
 
 		this.showState('playing');
 		this.beginWave();
@@ -952,15 +1161,21 @@ export class GameSystem extends createSystem({
 		this.shotTimer = 1.0; // initial delay
 		this.waveActive = true;
 
+		// R3: Reset split tracker per wave
+		this.splitSaveTracker.clear();
+
 		const dm = DIFF_MULT[this.difficulty];
 		const w = this.wave;
 
-		if (this.mode === 'timeattack') {
+		// R3: Challenge mode uses scripted formations
+		this.challengeQueue = [];
+		if (this.mode === 'challenge') {
+			this.buildChallengeQueue(this.challengeLevel);
+			this.waveShots = this.challengeQueue.length;
+			this.shotInterval = Math.max(0.5, 1.5 - this.challengeLevel * 0.08) / dm;
+		} else if (this.mode === 'timeattack') {
 			this.waveShots = 999; // continuous
 			this.shotInterval = Math.max(0.4, 1.2 - w * 0.05) / dm;
-		} else if (this.mode === 'challenge') {
-			this.waveShots = 5 + this.challengeLevel * 2;
-			this.shotInterval = Math.max(0.5, 1.5 - this.challengeLevel * 0.08) / dm;
 		} else if (this.mode === 'training') {
 			this.waveShots = 5;
 			this.shotInterval = 2.5;
@@ -970,6 +1185,9 @@ export class GameSystem extends createSystem({
 		}
 
 		playSfx('wave');
+
+		// R3: Update music tempo with wave
+		updateMusicTempo(w);
 
 		// R2: Wave preview — show incoming shot types on HUD
 		this.wavePreviewTimer = 2.0;
@@ -1065,6 +1283,10 @@ export class GameSystem extends createSystem({
 	}
 
 	spawnShot(type?: ShotType) {
+		// R3: Challenge mode pops from scripted queue
+		if (this.mode === 'challenge' && this.challengeQueue.length > 0 && !type) {
+			type = this.challengeQueue.shift()!;
+		}
 		const types = this.getShotTypes();
 		if (!type) type = types[Math.floor(Math.random() * types.length)];
 
@@ -1131,6 +1353,8 @@ export class GameSystem extends createSystem({
 			curvePhase: Math.random() * Math.PI * 2,
 			curveAmplitude: 1.5 + Math.random() * 1.5,
 			spawnZ: pos.z,
+			splitId: 0,
+			approachSoundPlayed: false,
 		};
 
 		this.shots.push(shot);
@@ -1187,6 +1411,7 @@ export class GameSystem extends createSystem({
 				target, speed: baseSpeed, alive: true, blocked: false,
 				splitDone: true, phantomTimer: 0, visible: true,
 				curvePhase: 0, curveAmplitude: 0, spawnZ: pos.z,
+				splitId: 0, approachSoundPlayed: false,
 			});
 		}
 
@@ -1195,6 +1420,8 @@ export class GameSystem extends createSystem({
 	}
 
 	spawnSplitChildren(parent: Shot) {
+		this.splitIdCounter++;
+		const currentSplitId = this.splitIdCounter;
 		for (let i = 0; i < 2; i++) {
 			const offset = i === 0 ? -0.8 : 0.8;
 			const newTarget = parent.target.clone();
@@ -1221,6 +1448,7 @@ export class GameSystem extends createSystem({
 				target: newTarget, speed: parent.speed * 0.9, alive: true, blocked: false,
 				splitDone: true, phantomTimer: 0, visible: true,
 				curvePhase: 0, curveAmplitude: 0, spawnZ: pos.z,
+				splitId: currentSplitId, approachSoundPlayed: false,
 			});
 		}
 		playSfx('split');
@@ -1333,6 +1561,13 @@ export class GameSystem extends createSystem({
 		if (this.score >= 10000) this.unlockAchievement(13);
 		if (this.score >= 25000) this.unlockAchievement(14);
 
+		// R3: Split saver tracking
+		if (shot.splitId > 0) {
+			const count = (this.splitSaveTracker.get(shot.splitId) || 0) + 1;
+			this.splitSaveTracker.set(shot.splitId, count);
+			if (count >= 2) this.unlockAchievement(17); // Split Saver
+		}
+
 		this.updateHud();
 	}
 
@@ -1360,6 +1595,10 @@ export class GameSystem extends createSystem({
 
 		// R2: Camera shake
 		this.cameraShakeTimer = 0.3;
+
+		// R3: Trigger net ripple
+		this.netRippleActive = true;
+		this.netRippleTimer = 0;
 
 		// R2: Goal popup
 		this.spawnScorePopup(shot.pos, '-1 LIFE', '#ff4444');
@@ -1559,6 +1798,12 @@ export class GameSystem extends createSystem({
 			// Update mesh position
 			s.mesh.position.copy(s.pos);
 
+			// R3: Approach sounds — play when shot crosses z=-5
+			if (!s.approachSoundPlayed && s.pos.z > -5 && s.alive) {
+				s.approachSoundPlayed = true;
+				playApproachSfx(s.type);
+			}
+
 			// Update trail
 			const trailChildren = s.trail.children as Mesh[];
 			for (let t = 0; t < trailChildren.length; t++) {
@@ -1644,6 +1889,18 @@ export class GameSystem extends createSystem({
 			mat.opacity = Math.min(1, p.life / 0.5); // fade out in last 0.5s
 		}
 
+		// R3: Net ripple animation
+		if (this.netRippleActive) {
+			this.netRippleTimer += dt;
+			if (this.netRippleTimer >= 0.5) {
+				// Restore original positions
+				this.netRippleActive = false;
+				this.restoreNetPositions();
+			} else {
+				this.animateNetRipple();
+			}
+		}
+
 		// Gauntlet glow pulse
 		const pulse = 0.6 + Math.sin(_time * 4) * 0.2;
 		(this.gauntletL.material as MeshStandardMaterial).emissiveIntensity = pulse;
@@ -1713,6 +1970,110 @@ export class GameSystem extends createSystem({
 		const opacity = baseOpacity + Math.sin(time * pulseSpeed) * pulseAmount;
 		matL.opacity = Math.min(0.5, opacity);
 		matR.opacity = Math.min(0.5, opacity);
+	}
+
+	// ── R3: Per-mode environment themes ──
+	applyModeTheme(mode: GameMode) {
+		// Fog + ambient + accent lights per mode
+		if (mode === 'challenge') {
+			this.scene.fog = new FogExp2(0x110800, 0.02);
+			this.scene.background = new Color(0x110800);
+			this.ambientLight.color.set(0x332211);
+			const challengeColors = [0xff6600, 0xff4400, 0xff8800, 0xff2200, 0xcc4400];
+			for (let i = 0; i < this.accentLights.length; i++) {
+				this.accentLights[i].color.set(challengeColors[i] || 0xff4400);
+			}
+		} else if (mode === 'training') {
+			this.scene.fog = new FogExp2(0x001108, 0.02);
+			this.scene.background = new Color(0x001108);
+			this.ambientLight.color.set(0x113322);
+			const trainColors = [0x00ff88, 0x00cc66, 0x22ffaa, 0x44ff88, 0x00ffaa];
+			for (let i = 0; i < this.accentLights.length; i++) {
+				this.accentLights[i].color.set(trainColors[i] || 0x00ff88);
+			}
+		} else if (mode === 'timeattack') {
+			this.scene.fog = new FogExp2(0x080011, 0.02);
+			this.scene.background = new Color(0x080011);
+			this.ambientLight.color.set(0x221133);
+			const taColors = [0xcc44ff, 0xff44cc, 0xaa22ff, 0xff66dd, 0xdd44ff];
+			for (let i = 0; i < this.accentLights.length; i++) {
+				this.accentLights[i].color.set(taColors[i] || 0xcc44ff);
+			}
+		} else {
+			// Arcade — default
+			this.scene.fog = new FogExp2(0x000811, 0.02);
+			this.scene.background = new Color(0x000811);
+			this.ambientLight.color.set(0x112233);
+			for (let i = 0; i < this.accentLights.length; i++) {
+				this.accentLights[i].color.set(this.originalAccentColors[i] || 0x00ffcc);
+			}
+		}
+	}
+
+	// ── R3: Challenge mode scripted formations ──
+	buildChallengeQueue(level: number) {
+		this.challengeQueue = [];
+		switch (level) {
+			case 1: // Easy warm-up: 5 standards
+				this.challengeQueue = ['standard', 'standard', 'standard', 'standard', 'standard'];
+				break;
+			case 2: // Introduce curves
+				this.challengeQueue = ['standard', 'standard', 'standard', 'curve', 'curve'];
+				break;
+			case 3: // Power mixed with standards
+				this.challengeQueue = ['standard', 'power', 'standard', 'power', 'standard'];
+				break;
+			case 4: // Curve barrage
+				this.challengeQueue = ['curve', 'curve', 'curve', 'curve'];
+				break;
+			case 5: // Split intro (2 splits = 4 sub-shots)
+				this.challengeQueue = ['standard', 'split', 'standard', 'split'];
+				break;
+			case 6: // Phantom mixed in
+				this.challengeQueue = ['standard', 'standard', 'phantom', 'standard', 'standard'];
+				break;
+			case 7: // Power wall — 3 powers close together
+				this.challengeQueue = ['power', 'power', 'power', 'standard', 'standard'];
+				break;
+			case 8: // Mixed everything
+				this.challengeQueue = ['standard', 'curve', 'power', 'split', 'standard', 'curve', 'power', 'split'];
+				break;
+			case 9: // Phantoms + multi
+				this.challengeQueue = ['phantom', 'phantom', 'multi', 'standard', 'standard'];
+				break;
+			case 10: // Boss wave — everything, fast
+				this.challengeQueue = [
+					'standard', 'curve', 'power', 'split', 'phantom',
+					'multi', 'standard', 'curve', 'power', 'split',
+					'phantom', 'multi', 'standard', 'power', 'standard',
+				];
+				break;
+			default:
+				this.challengeQueue = ['standard', 'standard', 'standard', 'standard', 'standard'];
+		}
+	}
+
+	// ── R3: Net ripple helpers ──
+	animateNetRipple() {
+		if (!this.goalNet || !this.goalNetOrigZ) return;
+		const posAttr = this.goalNet.geometry.getAttribute('position');
+		const decay = 1 - this.netRippleTimer / 0.5;
+		for (let i = 0; i < posAttr.count; i++) {
+			const y = (posAttr as any).getY(i);
+			const origZ = this.goalNetOrigZ[i];
+			const offset = Math.sin(y * 4) * 0.3 * decay;
+			(posAttr as any).setZ(i, origZ + offset);
+		}
+		(posAttr as any).needsUpdate = true;
+	}
+
+	restoreNetPositions() {
+		if (!this.goalNet || !this.goalNetOrigZ) return;
+		const posAttr = this.goalNet.geometry.getAttribute('position');
+		for (let i = 0; i < posAttr.count; i++) {
+			(posAttr as any).setZ(i, this.goalNetOrigZ[i]);
+		}
+		(posAttr as any).needsUpdate = true;
 	}
 
 	updateBrowserGauntlets() {
