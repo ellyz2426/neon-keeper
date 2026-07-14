@@ -12,11 +12,12 @@
 >
   <text fontSize="24" color="#00ffcc" fontWeight="bold">LEADERBOARD</text>
 
-  <container flexDirection="row" gap="8" marginTop="4">
-    <text name="lb-tab-arcade" fontSize="12" color="#00ffcc" backgroundColor="#001a2a" padding="6" borderRadius="4" cursor="pointer" borderColor="#00ffcc" borderWidth="1">ARCADE</text>
-    <text name="lb-tab-challenge" fontSize="12" color="#ffaa00" backgroundColor="#1a1200" padding="6" borderRadius="4" cursor="pointer" borderColor="#ffaa00" borderWidth="1">CHALLENGE</text>
-    <text name="lb-tab-timeattack" fontSize="12" color="#cc44ff" backgroundColor="#1a0020" padding="6" borderRadius="4" cursor="pointer" borderColor="#cc44ff" borderWidth="1">TIME ATK</text>
-    <text name="lb-tab-endless" fontSize="12" color="#ff6600" backgroundColor="#1a0800" padding="6" borderRadius="4" cursor="pointer" borderColor="#ff6600" borderWidth="1">ENDLESS</text>
+  <container flexDirection="row" gap="6" marginTop="4">
+    <text name="lb-tab-arcade" fontSize="11" color="#00ffcc" backgroundColor="#001a2a" padding="5" borderRadius="4" cursor="pointer" borderColor="#00ffcc" borderWidth="1">ARCADE</text>
+    <text name="lb-tab-challenge" fontSize="11" color="#ffaa00" backgroundColor="#1a1200" padding="5" borderRadius="4" cursor="pointer" borderColor="#ffaa00" borderWidth="1">CHALLENGE</text>
+    <text name="lb-tab-timeattack" fontSize="11" color="#cc44ff" backgroundColor="#1a0020" padding="5" borderRadius="4" cursor="pointer" borderColor="#cc44ff" borderWidth="1">TIME ATK</text>
+    <text name="lb-tab-endless" fontSize="11" color="#ff6600" backgroundColor="#1a0800" padding="5" borderRadius="4" cursor="pointer" borderColor="#ff6600" borderWidth="1">ENDLESS</text>
+    <text name="lb-tab-daily" fontSize="11" color="#ff8800" backgroundColor="#1a0f00" padding="5" borderRadius="4" cursor="pointer" borderColor="#ff8800" borderWidth="1">DAILY</text>
   </container>
 
   <text name="lb-mode-title" fontSize="16" color="#00ffcc" fontWeight="bold" marginTop="4">ARCADE</text>

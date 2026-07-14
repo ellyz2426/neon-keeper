@@ -2,18 +2,18 @@
   flexDirection="column"
   alignItems="center"
   justifyContent="center"
-  gap="10"
-  padding="20"
+  gap="8"
+  padding="18"
   backgroundColor="#000a15ee"
   borderRadius="14"
   borderColor="#00ccff"
   borderWidth="2"
   width="400"
-  height="540"
+  height="580"
 >
   <text fontSize="26" color="#00ccff" fontWeight="bold">SETTINGS</text>
 
-  <container flexDirection="column" gap="10" width="320" marginTop="8">
+  <container flexDirection="column" gap="8" width="320" marginTop="6">
     <container flexDirection="row" justifyContent="space-between" alignItems="center">
       <text fontSize="14" color="#558899">Difficulty</text>
       <text
@@ -115,13 +115,30 @@
         textAlign="center"
       >Cyan</text>
     </container>
+
+    <container flexDirection="row" justifyContent="space-between" alignItems="center">
+      <text fontSize="14" color="#558899">Arena</text>
+      <text
+        name="set-arena"
+        fontSize="14"
+        color="#ff8800"
+        backgroundColor="#1a0f00"
+        padding="6"
+        borderRadius="4"
+        cursor="pointer"
+        borderColor="#ff8800"
+        borderWidth="1"
+        width="100"
+        textAlign="center"
+      >Neon Classic</text>
+    </container>
   </container>
 
   <text
     name="set-back"
     fontSize="14"
     color="#446688"
-    marginTop="10"
+    marginTop="8"
     cursor="pointer"
     padding="6"
   >&lt; BACK</text>

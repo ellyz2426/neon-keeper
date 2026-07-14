@@ -14,7 +14,7 @@ import {
 
 // ── Types ──
 type GameState = 'menu' | 'mode_select' | 'playing' | 'wave_complete' | 'game_over' | 'settings' | 'achievements' | 'stats' | 'leaderboard' | 'tutorial';
-type GameMode = 'arcade' | 'challenge' | 'training' | 'timeattack' | 'endless';
+type GameMode = 'arcade' | 'challenge' | 'training' | 'timeattack' | 'endless' | 'daily';
 type ShotType = 'standard' | 'curve' | 'power' | 'split' | 'phantom' | 'multi';
 type Difficulty = 'easy' | 'normal' | 'hard';
 type PowerUpType = 'shield_expand' | 'slow_mo' | 'double_points' | 'magnet';
@@ -87,6 +87,9 @@ interface SaveData {
 	shotStats: Record<string, { saves: number; goals: number }>;
 	bossesDefeated: number;
 	modifiersSeen: string[];
+	// R8: New fields
+	dailyBest: { date: string; score: number } | null;
+	arenaSkin: string;
 }
 
 // ── Constants ──
@@ -457,6 +460,28 @@ function makePopupTexture(text: string, color: string): CanvasTexture {
 	return tex;
 }
 
+// ── R8: Seeded PRNG ──
+function seededRandom(seed: number): () => number {
+	let s = seed;
+	return () => {
+		s = (s * 1664525 + 1013904223) & 0xFFFFFFFF;
+		return (s >>> 0) / 0xFFFFFFFF;
+	};
+}
+
+function getDailySeed(): number {
+	const d = new Date();
+	return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+function getTodayDateStr(): string {
+	const d = new Date();
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	const dd = String(d.getDate()).padStart(2, '0');
+	return y + '-' + m + '-' + dd;
+}
+
 // ── System ──
 export class GameSystem extends createSystem({
 	menuPanel: { required: [PanelUI, PanelDocument], where: [eq(PanelUI, 'config', './ui/main-menu.json')] },
@@ -755,7 +780,7 @@ export class GameSystem extends createSystem({
 	countdownActive = false;
 
 	// ── R6: Leaderboard tab ──
-	lbActiveTab: 'arcade' | 'challenge' | 'timeattack' | 'endless' = 'arcade';
+	lbActiveTab: 'arcade' | 'challenge' | 'timeattack' | 'endless' | 'daily' = 'arcade';
 
 	// ── R6: Save shockwave rings ──
 	shockwaves: { mesh: LineSegments; life: number; maxLife: number }[] = [];
@@ -780,6 +805,51 @@ export class GameSystem extends createSystem({
 	goalCornerSpheres: Mesh[] = [];
 	goalEnergyLines: LineSegments[] = [];
 	goalDangerZone: Mesh | null = null;
+
+	// ── R8: Arena skin system ──
+	arenaSkin = 'Neon Classic';
+	beaconPillars: Mesh[] = [];
+	beaconLights: PointLight[] = [];
+	floorRingLine: LineSegments | null = null;
+	neonFloorRingMat: LineBasicMaterial | null = null;
+
+	// ── R8: Countdown ring (Time Attack) ──
+	countdownRing: Mesh | null = null;
+	countdownRingMat: MeshStandardMaterial | null = null;
+
+	// ── R8: Menu demo shots ──
+	demoShots: { mesh: Mesh; vel: Vector3; trail: Group }[] = [];
+	demoShotTimer = 0;
+
+	// ── R8: Daily challenge ──
+	dailyRng: (() => number) | null = null;
+
+	// ── R8: Leaderboard tab ──
+	lbActiveTabR8: string = 'arcade';
+
+	// ── R9: Achievement notification banner ──
+	achvBannerMesh: Mesh | null = null;
+	achvBannerTimer = 0;
+	achvBannerQueue: string[] = [];
+
+	// ── R9: Atmosphere particles ──
+	atmosParticles: { mesh: Mesh; vel: Vector3; life: number; maxLife: number }[] = [];
+	atmosSpawnTimer = 0;
+
+	// ── R9: Near-miss spark effect ──
+	nearMissSparks: { mesh: Mesh; vel: Vector3; life: number }[] = [];
+
+	// ── R9: Reaction time tracking ──
+	lastShotSpawnTime = 0;
+	reactionTimes: number[] = [];
+	avgReactionTime = 0;
+
+	// ── R9: Session timer ──
+	sessionElapsed = 0;
+
+	// ── R9: Post-goal dramatic slowdown ──
+	goalSlowdownTimer = 0;
+	goalSlowdownActive = false;
 
 	// ── Save data ──
 	saveData!: SaveData;
@@ -832,7 +902,14 @@ export class GameSystem extends createSystem({
 				}
 				if (this.saveData.bossesDefeated === undefined) this.saveData.bossesDefeated = 0;
 				if (!this.saveData.modifiersSeen) this.saveData.modifiersSeen = [];
+				// R8: Migrate daily best and arena skin
+				if (this.saveData.dailyBest === undefined) this.saveData.dailyBest = null;
+				if (!this.saveData.arenaSkin) this.saveData.arenaSkin = 'Neon Classic';
+				if (!this.saveData.modeStats.daily) {
+					this.saveData.modeStats.daily = { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 };
+				}
 				this.gauntletColor = this.saveData.gauntletColor;
+				this.arenaSkin = this.saveData.arenaSkin;
 				return;
 			}
 		} catch { /* */ }
@@ -847,6 +924,7 @@ export class GameSystem extends createSystem({
 				training: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
 				timeattack: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
 				endless: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+				daily: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
 			},
 			leaderboard: [],
 			challengeStars: new Array(10).fill(0),
@@ -859,6 +937,9 @@ export class GameSystem extends createSystem({
 			},
 			bossesDefeated: 0,
 			modifiersSeen: [],
+			// R8
+			dailyBest: null,
+			arenaSkin: 'Neon Classic',
 		};
 	}
 
@@ -928,6 +1009,14 @@ export class GameSystem extends createSystem({
 
 		// R7: Goal decoration (corner spheres, energy lines, danger zone)
 		this.buildGoalDecoration();
+
+		// R8: Time Attack countdown ring
+		this.buildCountdownRing();
+
+		// R8: Apply saved arena skin
+		if (this.arenaSkin !== 'Neon Classic') {
+			this.applyArenaSkin(this.arenaSkin);
+		}
 	}
 
 	buildFloorGrid() {
@@ -1121,6 +1210,7 @@ export class GameSystem extends createSystem({
 			const pillar = new Mesh(pillarGeo, pillarMat);
 			pillar.position.set(bx, beaconH / 2, bz);
 			this.scene.add(pillar);
+			this.beaconPillars.push(pillar);
 
 			// Top beacon sphere
 			const topGeo = new SphereGeometry(0.15, 8, 6);
@@ -1130,11 +1220,13 @@ export class GameSystem extends createSystem({
 			const top = new Mesh(topGeo, topMat);
 			top.position.set(bx, beaconH + 0.15, bz);
 			this.scene.add(top);
+			this.beaconPillars.push(top);
 
 			// Point light at top
 			const bl = new PointLight(col, 1.5, 15);
 			bl.position.set(bx, beaconH + 0.3, bz);
 			this.scene.add(bl);
+			this.beaconLights.push(bl);
 		}
 	}
 
@@ -1154,7 +1246,10 @@ export class GameSystem extends createSystem({
 		const geo = new BufferGeometry();
 		geo.setAttribute('position', new Float32BufferAttribute(verts, 3));
 		const mat = new LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.25 });
-		this.scene.add(new LineSegments(geo, mat));
+		this.neonFloorRingMat = mat;
+		const line = new LineSegments(geo, mat);
+		this.floorRingLine = line;
+		this.scene.add(line);
 	}
 
 	// ── R2: Orbiting accent spheres ──
@@ -1368,11 +1463,36 @@ export class GameSystem extends createSystem({
 
 	bindModeSelect() {
 		const d = this.modeDoc!;
-		(d.getElementById('btn-arcade') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.startGame('arcade'); });
-		(d.getElementById('btn-challenge') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.startGame('challenge'); });
-		(d.getElementById('btn-training') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.startGame('training'); });
-		(d.getElementById('btn-timeattack') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.startGame('timeattack'); });
-		(d.getElementById('btn-endless') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.startGame('endless'); });
+		(d.getElementById('btn-arcade') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			if (!this.isUnlocked('arcade')) return;
+			this.startGame('arcade');
+		});
+		(d.getElementById('btn-challenge') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			if (!this.isUnlocked('challenge')) return;
+			this.startGame('challenge');
+		});
+		(d.getElementById('btn-training') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			if (!this.isUnlocked('training')) return;
+			this.startGame('training');
+		});
+		(d.getElementById('btn-timeattack') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			if (!this.isUnlocked('timeattack')) return;
+			this.startGame('timeattack');
+		});
+		(d.getElementById('btn-endless') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			if (!this.isUnlocked('endless')) return;
+			this.startGame('endless');
+		});
+		(d.getElementById('btn-daily') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			if (!this.isUnlocked('daily')) return;
+			this.startGame('daily');
+		});
 		(d.getElementById('btn-back') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.showState('menu'); });
 	}
 
@@ -1392,7 +1512,7 @@ export class GameSystem extends createSystem({
 		const d = this.settingsDoc!;
 		(d.getElementById('set-diff') as UIKit.Text)?.addEventListener('click', () => {
 			playSfx('click');
-			const opts: Difficulty[] = ['easy', 'normal', 'hard'];
+			const opts: Difficulty[] = this.isUnlocked('hard') ? ['easy', 'normal', 'hard'] : ['easy', 'normal'];
 			const idx = (opts.indexOf(this.difficulty) + 1) % opts.length;
 			this.difficulty = opts[idx];
 			this.setTxt(d, 'set-diff', this.difficulty.charAt(0).toUpperCase() + this.difficulty.slice(1));
@@ -1434,6 +1554,20 @@ export class GameSystem extends createSystem({
 			this.saveData.gauntletColor = this.gauntletColor;
 			this.persistSave();
 		});
+
+		// R8: Arena skin selector
+		(d.getElementById('set-arena') as UIKit.Text)?.addEventListener('click', () => {
+			playSfx('click');
+			const allSkins = ['Neon Classic', 'Cyber Red', 'Ocean Deep', 'Void'];
+			const available = allSkins.filter(s => this.isUnlocked('skin_' + s));
+			if (available.length === 0) return;
+			const idx = (available.indexOf(this.arenaSkin) + 1) % available.length;
+			this.arenaSkin = available[idx];
+			this.applyArenaSkin(this.arenaSkin);
+			this.setTxt(d, 'set-arena', this.arenaSkin);
+			this.saveData.arenaSkin = this.arenaSkin;
+			this.persistSave();
+		});
 	}
 
 	bindAchievements() {
@@ -1455,6 +1589,7 @@ export class GameSystem extends createSystem({
 		(d.getElementById('lb-tab-challenge') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.lbActiveTab = 'challenge'; this.refreshLeaderboard(); });
 		(d.getElementById('lb-tab-timeattack') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.lbActiveTab = 'timeattack'; this.refreshLeaderboard(); });
 		(d.getElementById('lb-tab-endless') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.lbActiveTab = 'endless'; this.refreshLeaderboard(); });
+		(d.getElementById('lb-tab-daily') as UIKit.Text)?.addEventListener('click', () => { playSfx('click'); this.lbActiveTab = 'daily'; this.refreshLeaderboard(); });
 		this.refreshLeaderboard();
 	}
 
@@ -1467,7 +1602,7 @@ export class GameSystem extends createSystem({
 		if (!this.lbDoc) return;
 		const d = this.lbDoc;
 		const tab = this.lbActiveTab;
-		const titles: Record<string, string> = { arcade: 'ARCADE', challenge: 'CHALLENGE', timeattack: 'TIME ATTACK', endless: 'ENDLESS' };
+		const titles: Record<string, string> = { arcade: 'ARCADE', challenge: 'CHALLENGE', timeattack: 'TIME ATTACK', endless: 'ENDLESS', daily: 'DAILY' };
 		this.setTxt(d, 'lb-mode-title', titles[tab] || 'ARCADE');
 
 		// Filter entries for this mode, sorted by score desc
@@ -1530,6 +1665,11 @@ export class GameSystem extends createSystem({
 		const rank = this.getRank();
 		this.setTxt(this.menuDoc, 'rank-label', 'Rank: ' + rank);
 		this.setTxt(this.menuDoc, 'best-label', 'Best Wave: ' + (this.saveData.bestWave || '--'));
+		// R8: Play time
+		const mins = Math.floor(this.saveData.playTimeMs / 60000);
+		const timeStr = mins < 60 ? mins + 'm' : Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+		this.setTxt(this.menuDoc, 'playtime-label', 'Play Time: ' + timeStr);
+		this.setTxt(this.menuDoc, 'version-label', 'v1.0 - Build 109');
 	}
 
 	updateChallengeStarsDisplay(totalStars: number) {
@@ -1547,6 +1687,8 @@ export class GameSystem extends createSystem({
 			this.setTxt(this.hudDoc, 'timer', Math.ceil(this.timeLeft) + 's');
 		} else if (this.mode === 'challenge') {
 			this.setTxt(this.hudDoc, 'timer', 'Challenge ' + this.challengeLevel + '/10');
+		} else if (this.mode === 'daily') {
+			this.setTxt(this.hudDoc, 'timer', 'DAILY ' + getTodayDateStr());
 		} else if (this.mode === 'endless') {
 			this.setTxt(this.hudDoc, 'timer', 'Endless W' + this.endlessInternalWave);
 		} else {
@@ -1557,11 +1699,18 @@ export class GameSystem extends createSystem({
 			this.setTxt(this.hudDoc, 'shots-left', 'BLOCKED: ' + this.endlessShotsBlocked);
 		} else if (this.mode === 'timeattack') {
 			this.setTxt(this.hudDoc, 'shots-left', 'SAVES: ' + this.totalSaves);
+		} else if (this.mode === 'daily') {
+			this.setTxt(this.hudDoc, 'shots-left', 'WAVE: ' + this.wave + '/8');
 		} else if (this.mode === 'training') {
 			this.setTxt(this.hudDoc, 'shots-left', 'SHOTS: ' + this.waveShotsLaunched + '/' + this.waveShots);
 		} else {
 			this.setTxt(this.hudDoc, 'shots-left', 'SHOTS: ' + this.waveShotsLaunched + '/' + this.waveShots);
 		}
+		// R9: Session elapsed time
+		const secs = Math.floor(this.sessionElapsed);
+		const m = Math.floor(secs / 60);
+		const ss = String(secs % 60).padStart(2, '0');
+		this.setTxt(this.hudDoc, 'session-time', m + ':' + ss);
 	}
 
 	refreshAchievements() {
@@ -1601,6 +1750,7 @@ export class GameSystem extends createSystem({
 			this.setTxt(this.statsDoc, 'st-training-best', ms.training ? String(ms.training.bestScore) : '0');
 			this.setTxt(this.statsDoc, 'st-timeattack-best', ms.timeattack ? String(ms.timeattack.bestScore) : '0');
 			this.setTxt(this.statsDoc, 'st-endless-best', ms.endless ? String(ms.endless.bestScore) : '0');
+			this.setTxt(this.statsDoc, 'st-daily-best', ms.daily ? String(ms.daily.bestScore) : '0');
 		}
 
 		// R7: Per-shot-type save rates
@@ -1658,14 +1808,24 @@ export class GameSystem extends createSystem({
 		// Show/hide goal based on game state
 		this.goalGroup.visible = s === 'playing' || s === 'wave_complete' || s === 'game_over';
 
+		// R8: Show/hide countdown ring
+		if (this.countdownRing) {
+			this.countdownRing.visible = s === 'playing' && this.mode === 'timeattack';
+		}
+
 		if (s === 'menu') {
 			this.updateMenuLabels();
 			this.clearShots();
 			this.clearPowerUps(); // R4
 			this.removeWaveModifier(); // R4
 			this.clearWarningArrows(); // R5
-			this.applyModeTheme('arcade'); // R3: restore default theme
+			this.applyArenaSkin(this.arenaSkin); // R8: Apply arena skin in menu
 			stopMusic(); // R3: stop generative music
+			// R8: Spawn demo shots
+			this.spawnDemoShots();
+		} else {
+			// R8: Clear demo shots when leaving menu
+			this.clearDemoShots();
 		}
 		// R6: Update challenge stars on mode select
 		if (s === 'mode_select' && this.modeDoc) {
@@ -1678,6 +1838,16 @@ export class GameSystem extends createSystem({
 				// Find the description text inside challenge container
 				this.updateChallengeStarsDisplay(totalStars);
 			}
+			// R8: Update progressive unlock visuals
+			this.refreshModeSelectLocks();
+			// R8: Update daily best on daily button
+			this.updateDailyButtonDesc();
+		}
+		// R8: Update arena skin label on settings show
+		if (s === 'settings' && this.settingsDoc) {
+			this.setTxt(this.settingsDoc, 'set-arena', this.arenaSkin);
+			// R8: Update difficulty lock
+			this.refreshDifficultyLock();
 		}
 	}
 
@@ -1698,6 +1868,7 @@ export class GameSystem extends createSystem({
 		else if (mode === 'challenge') this.lives = 1;
 		else if (mode === 'training') this.lives = 999;
 		else if (mode === 'endless') this.lives = 3;
+		else if (mode === 'daily') this.lives = 1;
 		else this.lives = 999; // timeattack
 
 		this.timeLeft = mode === 'timeattack' ? 60 : 0;
@@ -1708,6 +1879,13 @@ export class GameSystem extends createSystem({
 
 		// R6: Reset streak milestones
 		this.streakMilestonesHit = new Set();
+
+		// R8: Initialize daily RNG
+		if (mode === 'daily') {
+			this.dailyRng = seededRandom(getDailySeed());
+		} else {
+			this.dailyRng = null;
+		}
 
 		// R3: Apply mode-specific environment theme
 		this.applyModeTheme(mode);
@@ -1782,9 +1960,18 @@ export class GameSystem extends createSystem({
 		// R5: Wave start flash
 		this.triggerFlash(0x00ccff, 0.15, 0.3);
 
-		// R4: Remove previous modifier, maybe apply new one (not in endless)
+		// R4: Remove previous modifier, maybe apply new one (not in endless or daily)
 		this.removeWaveModifier();
-		if (this.wave >= 3 && this.mode !== 'training' && this.mode !== 'endless' && Math.random() < 0.3) {
+		if (this.mode === 'daily') {
+			// R8: Daily mode — seeded modifier per wave
+			if (this.dailyRng && this.wave >= 2) {
+				const mods: WaveModifier[] = ['fast_shots', 'giant_balls', 'tiny_goal', 'mirror', 'fog_thick', 'double_shots', 'low_gravity', 'speed_ramp'];
+				const modIdx = Math.floor(this.dailyRng() * mods.length);
+				this.currentModifier = mods[modIdx];
+				this.applyWaveModifier();
+				this.modifierDisplayTimer = 3.0;
+			}
+		} else if (this.wave >= 3 && this.mode !== 'training' && this.mode !== 'endless' && Math.random() < 0.3) {
 			const mods: WaveModifier[] = ['fast_shots', 'giant_balls', 'tiny_goal', 'mirror', 'fog_thick', 'double_shots', 'low_gravity', 'speed_ramp'];
 			this.currentModifier = mods[Math.floor(Math.random() * mods.length)];
 			this.applyWaveModifier();
@@ -1806,6 +1993,11 @@ export class GameSystem extends createSystem({
 			this.buildChallengeQueue(this.challengeLevel);
 			this.waveShots = this.challengeQueue.length;
 			this.shotInterval = Math.max(0.5, 1.5 - this.challengeLevel * 0.08) / dm;
+		} else if (this.mode === 'daily') {
+			// R8: Daily challenge — seeded shot generation
+			this.buildDailyWaveQueue();
+			this.waveShots = this.challengeQueue.length;
+			this.shotInterval = Math.max(0.5, 1.3 - this.wave * 0.05) / dm;
 		} else if (this.mode === 'timeattack') {
 			this.waveShots = 999; // continuous
 			this.shotInterval = Math.max(0.4, 1.2 - w * 0.05) / dm;
@@ -1895,6 +2087,14 @@ export class GameSystem extends createSystem({
 			return;
 		}
 
+		// R8: Daily challenge — 8 waves total
+		if (this.mode === 'daily') {
+			if (this.wave >= 8) {
+				this.endGame();
+				return;
+			}
+		}
+
 		// R6: Endless mode never ends waves (safety check)
 		if (this.mode === 'endless') return;
 
@@ -1955,6 +2155,14 @@ export class GameSystem extends createSystem({
 		// R6: Record leaderboard entry
 		this.recordLeaderboard();
 
+		// R8: Daily best tracking
+		if (this.mode === 'daily') {
+			const today = getTodayDateStr();
+			if (!this.saveData.dailyBest || this.saveData.dailyBest.date !== today || this.score > this.saveData.dailyBest.score) {
+				this.saveData.dailyBest = { date: today, score: this.score };
+			}
+		}
+
 		// R5: Update per-mode stats
 		if (!this.saveData.modeStats) {
 			this.saveData.modeStats = {
@@ -1963,10 +2171,14 @@ export class GameSystem extends createSystem({
 				training: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
 				timeattack: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
 				endless: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
+				daily: { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 },
 			};
 		}
 		if (!this.saveData.modeStats.endless) {
 			this.saveData.modeStats.endless = { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 };
+		}
+		if (!this.saveData.modeStats.daily) {
+			this.saveData.modeStats.daily = { gamesPlayed: 0, bestScore: 0, bestWave: 0, totalSaves: 0 };
 		}
 		const ms = this.saveData.modeStats[this.mode];
 		if (ms) {
@@ -2034,6 +2246,8 @@ export class GameSystem extends createSystem({
 	getShotTypes(): ShotType[] {
 		// R6: Endless mode — all types from the start
 		if (this.mode === 'endless') return ['standard', 'curve', 'power', 'split', 'phantom', 'multi'];
+		// R8: Daily mode — all types from the start
+		if (this.mode === 'daily') return ['standard', 'curve', 'power', 'split', 'phantom', 'multi'];
 		const w = this.wave;
 		const types: ShotType[] = ['standard'];
 		if (w >= 3 || this.mode === 'challenge') types.push('curve');
@@ -2045,6 +2259,9 @@ export class GameSystem extends createSystem({
 	}
 
 	spawnShot(type?: ShotType) {
+		// R9: Track shot spawn time for reaction time measurement
+		this.lastShotSpawnTime = performance.now();
+
 		// R3: Challenge mode pops from scripted queue
 		if (this.mode === 'challenge' && this.challengeQueue.length > 0 && !type) {
 			type = this.challengeQueue.shift()!;
@@ -2448,6 +2665,7 @@ export class GameSystem extends createSystem({
 		if (this.combo > this.bestCombo) this.bestCombo = this.combo;
 		this.waveSaves++;
 		this.totalSaves++;
+
 
 		// R7: Track per-shot-type stats (both session and career)
 		const statKey = shot.isBoss ? 'boss' : shot.type;
@@ -3274,9 +3492,33 @@ export class GameSystem extends createSystem({
 		// R2: Ambient motes drift always
 		this.updateAmbientMotes(Math.min(delta, 0.05));
 
+		// R8: Update demo shots on menu
+		if (this.state === 'menu') {
+			this.updateDemoShots(Math.min(delta, 0.05));
+		}
+
+		// R9: Achievement banner always updates (even outside playing state)
+		this.updateAchvBanner(Math.min(delta, 0.05));
+
+		// R9: Atmosphere particles always drift
+		this.updateAtmosParticles(Math.min(delta, 0.05));
+
 		if (this.state !== 'playing') return;
 
-		const dt = Math.min(delta, 0.05); // cap
+		// R9: Apply post-goal slowdown multiplier
+		let dt = Math.min(delta, 0.05); // cap
+		if (this.goalSlowdownActive) {
+			this.goalSlowdownTimer -= Math.min(delta, 0.05);
+			if (this.goalSlowdownTimer <= 0) {
+				this.goalSlowdownActive = false;
+				this.goalSlowdownTimer = 0;
+			} else {
+				dt *= 0.3; // slow everything to 30% speed
+			}
+		}
+
+		// R9: Session elapsed tracker
+		this.sessionElapsed += dt;
 
 		// R2: Wave preview countdown
 		if (this.wavePreviewTimer > 0) {
@@ -3346,6 +3588,15 @@ export class GameSystem extends createSystem({
 		// R6: Shockwaves
 		this.updateShockwaves(dt);
 
+		// R9: Near-miss sparks update
+		this.updateNearMissSparks(dt);
+
+		// R9: Spawn atmosphere particles periodically
+		this.maybeSpawnAtmosParticle();
+
+		// R8: Countdown ring for Time Attack
+		this.updateCountdownRing(_time);
+
 		// R7: Training paths
 		if (this.mode === 'training') this.updateTrainingPaths();
 
@@ -3368,8 +3619,8 @@ export class GameSystem extends createSystem({
 
 		// R4: Power-up system
 		this.updatePowerUps(dt, _time);
-		// Maybe spawn a power-up during this wave
-		if (this.waveActive && !this.powerUpSpawnedThisWave && this.waveShotsLaunched >= 2) {
+		// Maybe spawn a power-up during this wave (not in daily — no power-ups)
+		if (this.waveActive && !this.powerUpSpawnedThisWave && this.waveShotsLaunched >= 2 && this.mode !== 'daily') {
 			this.maybeSpawnPowerUp();
 		}
 
@@ -3400,9 +3651,10 @@ export class GameSystem extends createSystem({
 		// Shot spawning
 		this.shotTimer -= dt;
 		if (this.shotTimer <= 0 && this.waveActive) {
-			// R5: Boss wave — spawn boss first on every 5th wave (arcade)
-			if (this.mode === 'arcade' && this.wave % 5 === 0 && this.wave > 0
-				&& !this.bossSpawnedThisWave && this.waveShotsLaunched === 0) {
+			// R5: Boss wave — spawn boss first on every 5th wave (arcade), or wave 5 in daily
+			const isBossWave = (this.mode === 'arcade' && this.wave % 5 === 0 && this.wave > 0)
+				|| (this.mode === 'daily' && this.wave === 5);
+			if (isBossWave && !this.bossSpawnedThisWave && this.waveShotsLaunched === 0) {
 				this.spawnBossShot();
 				this.shotTimer = this.shotInterval * 2; // extra delay after boss
 			} else if (this.mode === 'timeattack' || this.mode === 'endless' || this.waveShotsLaunched < this.waveShots) {
@@ -3578,7 +3830,7 @@ export class GameSystem extends createSystem({
 		// Clean dead shots
 		this.shots = this.shots.filter(s => s.alive);
 
-		// Check wave end (endless mode never ends waves)
+		// Check wave end (endless mode never ends waves, daily uses wave count)
 		if (this.mode !== 'timeattack' && this.mode !== 'endless' && this.waveActive &&
 			this.waveShotsLaunched >= this.waveShots && this.shots.length === 0) {
 			// Wave achievements
@@ -3753,6 +4005,16 @@ export class GameSystem extends createSystem({
 				this.accentLights[i].color.set(endColors[i] || 0xff6600);
 			}
 			this.applyGoalDecorationTheme(0xff6600);
+		} else if (mode === 'daily') {
+			// R8: Daily — golden/amber
+			this.scene.fog = new FogExp2(0x110a00, 0.02);
+			this.scene.background = new Color(0x110a00);
+			this.ambientLight.color.set(0x332200);
+			const dailyColors = [0xff8800, 0xffaa00, 0xffcc00, 0xff6600, 0xffbb00];
+			for (let i = 0; i < this.accentLights.length; i++) {
+				this.accentLights[i].color.set(dailyColors[i] || 0xff8800);
+			}
+			this.applyGoalDecorationTheme(0xff8800);
 		} else {
 			// Arcade — default
 			this.scene.fog = new FogExp2(0x000811, 0.02);
@@ -4070,6 +4332,435 @@ export class GameSystem extends createSystem({
 		for (const line of this.goalEnergyLines) {
 			const mat = line.material as LineBasicMaterial;
 			mat.color.set(color);
+		}
+	}
+
+	// ── R8: Seeded daily wave queue ──
+	buildDailyWaveQueue() {
+		if (!this.dailyRng) return;
+		const rng = this.dailyRng;
+		const allTypes: ShotType[] = ['standard', 'curve', 'power', 'split', 'phantom', 'multi'];
+		const shotCount = Math.min(12, 6 + this.wave);
+		this.challengeQueue = [];
+		for (let i = 0; i < shotCount; i++) {
+			const typeIdx = Math.floor(rng() * allTypes.length);
+			this.challengeQueue.push(allTypes[typeIdx]);
+		}
+	}
+
+	// ── R8: Progressive unlock system ──
+	isUnlocked(feature: string): boolean {
+		const achvCount = this.saveData.achievements.filter(Boolean).length;
+		if (feature === 'arcade' || feature === 'challenge' || feature === 'training' || feature === 'timeattack') return true;
+		if (feature === 'endless') return this.saveData.achievements[8] === true; // Wave 10
+		if (feature === 'daily') return this.saveData.achievements[18] === true; // Challenge Clear
+		if (feature === 'hard') return this.saveData.achievements[7] === true; // Wave 5
+		if (feature === 'skin_Neon Classic') return true;
+		if (feature === 'skin_Cyber Red') return achvCount >= 10;
+		if (feature === 'skin_Ocean Deep') return achvCount >= 20;
+		if (feature === 'skin_Void') return achvCount >= 25;
+		return true;
+	}
+
+	refreshModeSelectLocks() {
+		if (!this.modeDoc) return;
+		const d = this.modeDoc;
+		// Endless lock
+		const endlessTitle = d.getElementById('endless-title') as UIKit.Text | undefined;
+		const endlessDesc = d.getElementById('endless-desc') as UIKit.Text | undefined;
+		if (!this.isUnlocked('endless')) {
+			endlessTitle?.setProperties({ text: 'ENDLESS (LOCKED)', color: '#555555' });
+			endlessDesc?.setProperties({ text: 'Unlock: Reach wave 10 in Arcade', color: '#444444' });
+		} else {
+			endlessTitle?.setProperties({ text: 'ENDLESS', color: '#ff6600' });
+			if (endlessDesc) {
+				const totalStars = (this.saveData.challengeStars || []).reduce((a: number, b: number) => a + b, 0);
+				endlessDesc.setProperties({ text: 'No wave breaks - difficulty never stops climbing', color: '#886644' });
+			}
+		}
+		// Daily lock
+		const dailyTitle = d.getElementById('daily-title') as UIKit.Text | undefined;
+		const dailyDesc = d.getElementById('daily-desc') as UIKit.Text | undefined;
+		if (!this.isUnlocked('daily')) {
+			dailyTitle?.setProperties({ text: 'DAILY CHALLENGE (LOCKED)', color: '#555555' });
+			dailyDesc?.setProperties({ text: 'Unlock: Complete Challenge Mode', color: '#444444' });
+		} else {
+			dailyTitle?.setProperties({ text: 'DAILY CHALLENGE', color: '#ff8800' });
+		}
+	}
+
+	updateDailyButtonDesc() {
+		if (!this.modeDoc) return;
+		const dailyDesc = this.modeDoc.getElementById('daily-desc') as UIKit.Text | undefined;
+		if (!dailyDesc || !this.isUnlocked('daily')) return;
+		const today = getTodayDateStr();
+		if (this.saveData.dailyBest && this.saveData.dailyBest.date === today) {
+			dailyDesc.setProperties({
+				text: "Today's Best: " + this.saveData.dailyBest.score.toLocaleString(),
+				color: '#886644',
+			});
+		} else {
+			dailyDesc.setProperties({
+				text: "Today's unique challenge - beat your best!",
+				color: '#886644',
+			});
+		}
+	}
+
+	refreshDifficultyLock() {
+		if (!this.settingsDoc) return;
+		const d = this.settingsDoc;
+		if (!this.isUnlocked('hard') && this.difficulty === 'hard') {
+			this.difficulty = 'normal';
+		}
+		this.setTxt(d, 'set-diff', this.difficulty.charAt(0).toUpperCase() + this.difficulty.slice(1));
+	}
+
+	// ── R8: Arena skin system ──
+	applyArenaSkin(skin: string) {
+		const skins: Record<string, { fog: number; ambient: number; floor: number; beacon: number[]; ring: number; accent: number[] }> = {
+			'Neon Classic': {
+				fog: 0x000811, ambient: 0x112233, floor: 0x00ffcc,
+				beacon: [0x00ffcc, 0x00ccff, 0xcc44ff, 0xff4466],
+				ring: 0x00ffcc,
+				accent: [0x00ffcc, 0x00ccff, 0xcc44ff, 0xff4466, 0x44ff88],
+			},
+			'Cyber Red': {
+				fog: 0x110000, ambient: 0x331111, floor: 0xff3333,
+				beacon: [0xff4444, 0xff2222, 0xff6644, 0xff0022],
+				ring: 0xff3333,
+				accent: [0xff4444, 0xff2222, 0xff6644, 0xff0022, 0xff6666],
+			},
+			'Ocean Deep': {
+				fog: 0x000811, ambient: 0x113344, floor: 0x22ccaa,
+				beacon: [0x22ccaa, 0x00aacc, 0x44bbaa, 0x00cccc],
+				ring: 0x22ccaa,
+				accent: [0x22ccaa, 0x00aacc, 0x44bbaa, 0x00cccc, 0x44ddcc],
+			},
+			'Void': {
+				fog: 0x020204, ambient: 0x0a0a11, floor: 0x8844ff,
+				beacon: [0x8844ff, 0x6622dd, 0xaa66ff, 0x5500cc],
+				ring: 0x8844ff,
+				accent: [0x8844ff, 0x6622dd, 0xaa66ff, 0x5500cc, 0x9955ff],
+			},
+		};
+		const s = skins[skin] || skins['Neon Classic'];
+		this.scene.fog = new FogExp2(s.fog, skin === 'Ocean Deep' ? 0.025 : (skin === 'Void' ? 0.03 : 0.02));
+		this.scene.background = new Color(s.fog);
+		this.ambientLight.color.set(s.ambient);
+		// Floor grid
+		if (this.floorGridMat) this.floorGridMat.color.set(s.floor);
+		// Beacon pillars and lights
+		for (let i = 0; i < this.beaconPillars.length; i++) {
+			const col = s.beacon[Math.floor(i / 2) % s.beacon.length];
+			const mat = this.beaconPillars[i].material as MeshStandardMaterial;
+			mat.color.set(col);
+			mat.emissive.set(col);
+		}
+		for (let i = 0; i < this.beaconLights.length; i++) {
+			this.beaconLights[i].color.set(s.beacon[i % s.beacon.length]);
+		}
+		// Floor ring
+		if (this.neonFloorRingMat) this.neonFloorRingMat.color.set(s.ring);
+		// Accent lights
+		for (let i = 0; i < this.accentLights.length; i++) {
+			this.accentLights[i].color.set(s.accent[i % s.accent.length]);
+			this.originalAccentColors[i] = s.accent[i % s.accent.length];
+		}
+		this.applyGoalDecorationTheme(s.floor);
+	}
+
+	// ── R8: Time Attack countdown ring ──
+	buildCountdownRing() {
+		const geo = new CylinderGeometry(0.3, 0.3, 0.02, 32, 1, true);
+		const mat = new MeshStandardMaterial({
+			color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 1.0,
+			transparent: true, opacity: 0.7, side: DoubleSide,
+		});
+		this.countdownRingMat = mat;
+		this.countdownRing = new Mesh(geo, mat);
+		this.countdownRing.position.set(0, 2.5, -1.5);
+		this.countdownRing.visible = false;
+		this.scene.add(this.countdownRing);
+	}
+
+	updateCountdownRing(time: number) {
+		if (!this.countdownRing || !this.countdownRingMat) return;
+		if (this.mode !== 'timeattack') {
+			this.countdownRing.visible = false;
+			return;
+		}
+		this.countdownRing.visible = true;
+		const frac = Math.max(0, this.timeLeft / 60);
+		// Scale ring based on remaining time
+		this.countdownRing.scale.set(frac, 1, frac);
+		// Color transition: cyan -> yellow -> red
+		let c: Color;
+		if (this.timeLeft > 30) {
+			c = new Color(0x00ffcc);
+		} else if (this.timeLeft > 10) {
+			const t = (this.timeLeft - 10) / 20;
+			c = new Color(0xffcc00).lerp(new Color(0x00ffcc), t);
+		} else {
+			const t = this.timeLeft / 10;
+			c = new Color(0xff2200).lerp(new Color(0xffcc00), t);
+		}
+		this.countdownRingMat.color.copy(c);
+		this.countdownRingMat.emissive.copy(c);
+		// Pulse speed increases as time decreases
+		const pulseSpeed = this.timeLeft > 30 ? 2 : (this.timeLeft > 10 ? 5 : 10);
+		this.countdownRingMat.emissiveIntensity = 0.8 + Math.sin(time * pulseSpeed) * 0.5;
+	}
+
+	// ── R8: Menu demo shots ──
+	spawnDemoShots() {
+		this.clearDemoShots();
+		for (let i = 0; i < 3; i++) {
+			const colors = [0x00ffcc, 0xffaa00, 0xff4444];
+			const color = colors[i % 3];
+			const geo = new SphereGeometry(0.12, 8, 6);
+			const mat = new MeshStandardMaterial({
+				color, emissive: color, emissiveIntensity: 1.0,
+				transparent: true, opacity: 0.6,
+			});
+			const mesh = new Mesh(geo, mat);
+			const startX = -4 + i * 4;
+			const startZ = -20 - i * 3;
+			const startY = 1 + i * 0.8;
+			mesh.position.set(startX, startY, startZ);
+			this.scene.add(mesh);
+
+			// Simple trail
+			const trail = new Group();
+			for (let t = 0; t < 3; t++) {
+				const tGeo = new SphereGeometry(0.08 * (1 - t * 0.25), 4, 3);
+				const tMat = new MeshBasicMaterial({
+					color, transparent: true, opacity: 0.2 * (1 - t * 0.3),
+				});
+				const tMesh = new Mesh(tGeo, tMat);
+				trail.add(tMesh);
+			}
+			this.scene.add(trail);
+
+			const vel = new Vector3(
+				(Math.random() - 0.5) * 2,
+				(Math.random() - 0.3) * 0.5,
+				3 + Math.random() * 2,
+			);
+			this.demoShots.push({ mesh, vel, trail });
+		}
+	}
+
+	updateDemoShots(dt: number) {
+		for (const ds of this.demoShots) {
+			ds.mesh.position.x += ds.vel.x * dt;
+			ds.mesh.position.y += ds.vel.y * dt;
+			ds.mesh.position.z += ds.vel.z * dt;
+			ds.vel.y -= 1.0 * dt;
+
+			// Update trail
+			const children = ds.trail.children as Mesh[];
+			for (let t = 0; t < children.length; t++) {
+				const trailDt = (t + 1) * 2;
+				children[t].position.set(
+					ds.mesh.position.x - ds.vel.x * dt * trailDt,
+					ds.mesh.position.y - ds.vel.y * dt * trailDt,
+					ds.mesh.position.z - ds.vel.z * dt * trailDt,
+				);
+			}
+
+			// Reset if out of bounds
+			if (ds.mesh.position.z > 3 || ds.mesh.position.y < -2) {
+				ds.mesh.position.set(
+					(Math.random() - 0.5) * 8,
+					1 + Math.random() * 2,
+					-22 - Math.random() * 5,
+				);
+				ds.vel.set(
+					(Math.random() - 0.5) * 2,
+					(Math.random() - 0.3) * 0.5,
+					3 + Math.random() * 2,
+				);
+			}
+		}
+	}
+
+	clearDemoShots() {
+		for (const ds of this.demoShots) {
+			this.scene.remove(ds.mesh);
+			this.scene.remove(ds.trail);
+		}
+		this.demoShots = [];
+	}
+
+	// ── R9: Achievement notification banner ──
+	buildAchvBanner() {
+		const canvas = document.createElement('canvas');
+		canvas.width = 512;
+		canvas.height = 64;
+		const ctx2d = canvas.getContext('2d')!;
+		ctx2d.fillStyle = '#000a15';
+		ctx2d.fillRect(0, 0, 512, 64);
+		ctx2d.fillStyle = '#ffcc00';
+		ctx2d.font = 'bold 24px sans-serif';
+		ctx2d.textAlign = 'center';
+		ctx2d.fillText('ACHIEVEMENT UNLOCKED', 256, 28);
+
+		const tex = new CanvasTexture(canvas);
+		const geo = new BoxGeometry(1.8, 0.24, 0.01);
+		const mat = new MeshBasicMaterial({
+			map: tex, transparent: true, opacity: 0,
+		});
+		this.achvBannerMesh = new Mesh(geo, mat);
+		this.achvBannerMesh.position.set(0, 2.8, -1.5);
+		this.achvBannerMesh.visible = false;
+		this.scene.add(this.achvBannerMesh);
+	}
+
+	showAchvBanner(name: string) {
+		if (!this.achvBannerMesh) return;
+		const canvas = document.createElement('canvas');
+		canvas.width = 512;
+		canvas.height = 64;
+		const ctx2d = canvas.getContext('2d')!;
+		ctx2d.fillStyle = '#0a0a18';
+		ctx2d.fillRect(0, 0, 512, 64);
+		ctx2d.strokeStyle = '#ffcc00';
+		ctx2d.lineWidth = 3;
+		ctx2d.strokeRect(2, 2, 508, 60);
+		ctx2d.fillStyle = '#ffcc00';
+		ctx2d.font = 'bold 18px sans-serif';
+		ctx2d.textAlign = 'center';
+		ctx2d.fillText('ACHIEVEMENT UNLOCKED', 256, 25);
+		ctx2d.fillStyle = '#ffeecc';
+		ctx2d.font = '16px sans-serif';
+		ctx2d.fillText(name, 256, 50);
+
+		const tex = new CanvasTexture(canvas);
+		(this.achvBannerMesh.material as MeshBasicMaterial).map = tex;
+		(this.achvBannerMesh.material as MeshBasicMaterial).opacity = 1.0;
+		(this.achvBannerMesh.material as MeshBasicMaterial).needsUpdate = true;
+		this.achvBannerMesh.visible = true;
+		this.achvBannerMesh.position.y = 2.8;
+		this.achvBannerTimer = 3.0;
+	}
+
+	updateAchvBanner(dt: number) {
+		if (this.achvBannerTimer <= 0 && this.achvBannerQueue.length > 0) {
+			const name = this.achvBannerQueue.shift()!;
+			this.showAchvBanner(name);
+		}
+		if (this.achvBannerTimer > 0 && this.achvBannerMesh) {
+			this.achvBannerTimer -= dt;
+			if (this.achvBannerTimer <= 0) {
+				this.achvBannerMesh.visible = false;
+				(this.achvBannerMesh.material as MeshBasicMaterial).opacity = 0;
+			} else if (this.achvBannerTimer < 0.5) {
+				(this.achvBannerMesh.material as MeshBasicMaterial).opacity = this.achvBannerTimer / 0.5;
+			} else if (this.achvBannerTimer > 2.5) {
+				(this.achvBannerMesh.material as MeshBasicMaterial).opacity = (3.0 - this.achvBannerTimer) / 0.5;
+			}
+			this.achvBannerMesh.position.y += dt * 0.05;
+		}
+	}
+
+	// ── R9: Atmosphere particles (per-skin embers/sparks) ──
+	maybeSpawnAtmosParticle() {
+		this.atmosSpawnTimer -= 0.016;
+		if (this.atmosSpawnTimer > 0) return;
+		this.atmosSpawnTimer = 0.15 + Math.random() * 0.1;
+		if (this.atmosParticles.length > 30) return;
+
+		const skinColors: Record<string, number[]> = {
+			'Neon Classic': [0x00ffcc, 0x00ccff, 0xcc44ff],
+			'Cyber Red': [0xff4444, 0xff6644, 0xff2222],
+			'Ocean Deep': [0x22ccaa, 0x00aacc, 0x44ddcc],
+			'Void': [0x8844ff, 0x6622dd, 0xaa66ff],
+		};
+		const colors = skinColors[this.arenaSkin] || skinColors['Neon Classic'];
+		const color = colors[Math.floor(Math.random() * colors.length)];
+
+		const geo = new SphereGeometry(0.02 + Math.random() * 0.02, 3, 3);
+		const mat = new MeshBasicMaterial({
+			color, transparent: true, opacity: 0.4 + Math.random() * 0.3,
+		});
+		const mesh = new Mesh(geo, mat);
+		mesh.position.set(
+			(Math.random() - 0.5) * 14,
+			5 + Math.random() * 2,
+			-3 - Math.random() * 20,
+		);
+		this.scene.add(mesh);
+
+		this.atmosParticles.push({
+			mesh,
+			vel: new Vector3(
+				(Math.random() - 0.5) * 0.3,
+				-0.3 - Math.random() * 0.2,
+				(Math.random() - 0.5) * 0.2,
+			),
+			life: 4 + Math.random() * 3,
+			maxLife: 4 + Math.random() * 3,
+		});
+	}
+
+	updateAtmosParticles(dt: number) {
+		for (let i = this.atmosParticles.length - 1; i >= 0; i--) {
+			const p = this.atmosParticles[i];
+			p.life -= dt;
+			if (p.life <= 0 || p.mesh.position.y < -1) {
+				this.scene.remove(p.mesh);
+				this.atmosParticles.splice(i, 1);
+				continue;
+			}
+			p.mesh.position.x += p.vel.x * dt;
+			p.mesh.position.y += p.vel.y * dt;
+			p.mesh.position.z += p.vel.z * dt;
+			p.mesh.position.x += Math.sin(p.life * 2) * 0.01;
+			const frac = p.life / p.maxLife;
+			(p.mesh.material as MeshBasicMaterial).opacity = frac * 0.5;
+		}
+	}
+
+	// ── R9: Near-miss sparks ──
+	spawnNearMissSparks(pos: Vector3) {
+		for (let i = 0; i < 8; i++) {
+			const geo = new BoxGeometry(0.03, 0.03, 0.03);
+			const mat = new MeshBasicMaterial({
+				color: 0xffaa00, transparent: true, opacity: 0.9,
+			});
+			const mesh = new Mesh(geo, mat);
+			mesh.position.copy(pos);
+			this.scene.add(mesh);
+			this.nearMissSparks.push({
+				mesh,
+				vel: new Vector3(
+					(Math.random() - 0.5) * 5,
+					Math.random() * 4,
+					(Math.random() - 0.5) * 5,
+				),
+				life: 0.4 + Math.random() * 0.3,
+			});
+		}
+		playSfx('click');
+	}
+
+	updateNearMissSparks(dt: number) {
+		for (let i = this.nearMissSparks.length - 1; i >= 0; i--) {
+			const s = this.nearMissSparks[i];
+			s.life -= dt;
+			if (s.life <= 0) {
+				this.scene.remove(s.mesh);
+				this.nearMissSparks.splice(i, 1);
+				continue;
+			}
+			s.mesh.position.x += s.vel.x * dt;
+			s.mesh.position.y += s.vel.y * dt;
+			s.vel.y -= 9 * dt;
+			s.mesh.position.z += s.vel.z * dt;
+			(s.mesh.material as MeshBasicMaterial).opacity = s.life * 1.5;
+			s.mesh.rotation.x += dt * 10;
+			s.mesh.rotation.y += dt * 8;
 		}
 	}
 }

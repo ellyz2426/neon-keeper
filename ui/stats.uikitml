@@ -74,6 +74,10 @@
       <text fontSize="11" color="#ff6600">Endless</text>
       <text name="st-endless-best" fontSize="11" color="#ff6600">0</text>
     </container>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="11" color="#ff8800">Daily</text>
+      <text name="st-daily-best" fontSize="11" color="#ff8800">0</text>
+    </container>
   </container>
 
   <text fontSize="14" color="#558899" fontWeight="bold" marginTop="4">SHOT SAVE RATES</text>

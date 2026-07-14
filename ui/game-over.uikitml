@@ -9,7 +9,7 @@
   borderColor="#ff4444"
   borderWidth="2"
   width="420"
-  height="580"
+  height="620"
 >
   <text fontSize="30" color="#ff4444" fontWeight="bold">GAME OVER</text>
 
@@ -37,6 +37,14 @@
     <container flexDirection="row" justifyContent="space-between" padding="3">
       <text fontSize="13" color="#558899">Save Rate</text>
       <text name="go-rate" fontSize="13" color="#44cc44">0%</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Avg Reaction</text>
+      <text name="go-reaction" fontSize="13" color="#ffcc44">--</text>
+    </container>
+    <container flexDirection="row" justifyContent="space-between" padding="3">
+      <text fontSize="13" color="#558899">Session Time</text>
+      <text name="go-session" fontSize="13" color="#446688">--</text>
     </container>
   </container>
 

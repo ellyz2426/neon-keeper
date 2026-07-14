@@ -2,22 +2,22 @@
   flexDirection="column"
   alignItems="center"
   justifyContent="center"
-  gap="10"
-  padding="20"
+  gap="8"
+  padding="18"
   backgroundColor="#000a15ee"
   borderRadius="14"
   borderColor="#00ccff"
   borderWidth="2"
   width="440"
-  height="620"
+  height="700"
 >
   <text fontSize="28" color="#00ffcc" fontWeight="bold">SELECT MODE</text>
 
-  <container flexDirection="column" gap="6" marginTop="10" width="340">
+  <container flexDirection="column" gap="5" marginTop="8" width="340">
     <container
       name="btn-arcade"
       flexDirection="column"
-      padding="10"
+      padding="8"
       backgroundColor="#001a2a"
       borderColor="#00ffcc"
       borderWidth="1"
@@ -25,14 +25,14 @@
       cursor="pointer"
       gap="2"
     >
-      <text fontSize="18" color="#00ffcc" fontWeight="bold">ARCADE</text>
-      <text fontSize="11" color="#558899">Endless waves - 3 lives - climb the leaderboard</text>
+      <text name="arcade-title" fontSize="16" color="#00ffcc" fontWeight="bold">ARCADE</text>
+      <text fontSize="10" color="#558899">Endless waves - 3 lives - climb the leaderboard</text>
     </container>
 
     <container
       name="btn-challenge"
       flexDirection="column"
-      padding="10"
+      padding="8"
       backgroundColor="#1a1200"
       borderColor="#ffaa00"
       borderWidth="1"
@@ -40,14 +40,14 @@
       cursor="pointer"
       gap="2"
     >
-      <text fontSize="18" color="#ffaa00" fontWeight="bold">CHALLENGE</text>
-      <text name="challenge-desc" fontSize="11" color="#887744">10 preset patterns - no mistakes allowed</text>
+      <text name="challenge-title" fontSize="16" color="#ffaa00" fontWeight="bold">CHALLENGE</text>
+      <text name="challenge-desc" fontSize="10" color="#887744">10 preset patterns - no mistakes allowed</text>
     </container>
 
     <container
       name="btn-training"
       flexDirection="column"
-      padding="10"
+      padding="8"
       backgroundColor="#0a1a0a"
       borderColor="#44cc44"
       borderWidth="1"
@@ -55,14 +55,14 @@
       cursor="pointer"
       gap="2"
     >
-      <text fontSize="18" color="#44cc44" fontWeight="bold">TRAINING</text>
-      <text fontSize="11" color="#448844">Slow speed - practice your reflexes</text>
+      <text name="training-title" fontSize="16" color="#44cc44" fontWeight="bold">TRAINING</text>
+      <text fontSize="10" color="#448844">Slow speed - practice your reflexes</text>
     </container>
 
     <container
       name="btn-timeattack"
       flexDirection="column"
-      padding="10"
+      padding="8"
       backgroundColor="#1a0020"
       borderColor="#cc44ff"
       borderWidth="1"
@@ -70,14 +70,14 @@
       cursor="pointer"
       gap="2"
     >
-      <text fontSize="18" color="#cc44ff" fontWeight="bold">TIME ATTACK</text>
-      <text fontSize="11" color="#885599">60 seconds - save as many as you can</text>
+      <text name="timeattack-title" fontSize="16" color="#cc44ff" fontWeight="bold">TIME ATTACK</text>
+      <text fontSize="10" color="#885599">60 seconds - save as many as you can</text>
     </container>
 
     <container
       name="btn-endless"
       flexDirection="column"
-      padding="10"
+      padding="8"
       backgroundColor="#1a0800"
       borderColor="#ff6600"
       borderWidth="1"
@@ -85,8 +85,23 @@
       cursor="pointer"
       gap="2"
     >
-      <text fontSize="18" color="#ff6600" fontWeight="bold">ENDLESS</text>
-      <text name="endless-desc" fontSize="11" color="#886644">No wave breaks - difficulty never stops climbing</text>
+      <text name="endless-title" fontSize="16" color="#ff6600" fontWeight="bold">ENDLESS</text>
+      <text name="endless-desc" fontSize="10" color="#886644">No wave breaks - difficulty never stops climbing</text>
+    </container>
+
+    <container
+      name="btn-daily"
+      flexDirection="column"
+      padding="8"
+      backgroundColor="#1a0f00"
+      borderColor="#ff8800"
+      borderWidth="1"
+      borderRadius="8"
+      cursor="pointer"
+      gap="2"
+    >
+      <text name="daily-title" fontSize="16" color="#ff8800" fontWeight="bold">DAILY CHALLENGE</text>
+      <text name="daily-desc" fontSize="10" color="#886644">Today's unique challenge - beat your best!</text>
     </container>
   </container>
 
@@ -94,7 +109,7 @@
     name="btn-back"
     fontSize="14"
     color="#446688"
-    marginTop="8"
+    marginTop="6"
     cursor="pointer"
     padding="6"
   >&lt; BACK</text>

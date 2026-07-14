@@ -8,7 +8,7 @@
   borderColor="#00ccff66"
   borderWidth="1"
   width="320"
-  height="80"
+  height="88"
 >
   <container flexDirection="row" justifyContent="space-between" width="290" gap="6">
     <container flexDirection="column" alignItems="center" gap="1">
@@ -33,6 +33,7 @@
   </container>
   <container flexDirection="row" justifyContent="space-between" width="290">
     <text name="shots-left" fontSize="9" color="#446688"> </text>
+    <text name="session-time" fontSize="9" color="#335566">0:00</text>
     <text name="status" fontSize="9" color="#44aacc"> </text>
   </container>
 </container>

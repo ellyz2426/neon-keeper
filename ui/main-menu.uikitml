@@ -2,19 +2,19 @@
   flexDirection="column"
   alignItems="center"
   justifyContent="center"
-  gap="14"
-  padding="24"
+  gap="10"
+  padding="20"
   backgroundColor="#000a15ee"
   borderRadius="14"
   borderColor="#00ccff"
   borderWidth="2"
   width="440"
-  height="580"
+  height="620"
 >
   <text name="title" fontSize="38" color="#00ffcc" fontWeight="bold">NEON KEEPER</text>
   <text fontSize="14" color="#558899">VR Goalkeeper Challenge</text>
 
-  <container flexDirection="column" gap="8" marginTop="16" width="300">
+  <container flexDirection="column" gap="7" marginTop="12" width="300">
     <text
       name="btn-play"
       fontSize="22"
@@ -29,10 +29,10 @@
 
     <text
       name="btn-settings"
-      fontSize="16"
+      fontSize="15"
       color="#00ccff"
       backgroundColor="#001a2a"
-      padding="8"
+      padding="7"
       borderRadius="6"
       textAlign="center"
       cursor="pointer"
@@ -42,10 +42,10 @@
 
     <text
       name="btn-achieve"
-      fontSize="16"
+      fontSize="15"
       color="#ffaa00"
       backgroundColor="#1a1200"
-      padding="8"
+      padding="7"
       borderRadius="6"
       textAlign="center"
       cursor="pointer"
@@ -55,10 +55,10 @@
 
     <text
       name="btn-stats"
-      fontSize="16"
+      fontSize="15"
       color="#aa88ff"
       backgroundColor="#0f0a1a"
-      padding="8"
+      padding="7"
       borderRadius="6"
       textAlign="center"
       cursor="pointer"
@@ -68,10 +68,10 @@
 
     <text
       name="btn-tutorial"
-      fontSize="16"
+      fontSize="15"
       color="#88ccff"
       backgroundColor="#001020"
-      padding="8"
+      padding="7"
       borderRadius="6"
       textAlign="center"
       cursor="pointer"
@@ -81,10 +81,10 @@
 
     <text
       name="btn-leaderboard"
-      fontSize="16"
+      fontSize="15"
       color="#00ffcc"
       backgroundColor="#001a1a"
-      padding="8"
+      padding="7"
       borderRadius="6"
       textAlign="center"
       cursor="pointer"
@@ -93,6 +93,8 @@
     >LEADERBOARD</text>
   </container>
 
-  <text name="rank-label" fontSize="12" color="#446688" marginTop="8">Rank: Rookie</text>
+  <text name="rank-label" fontSize="12" color="#446688" marginTop="6">Rank: Rookie</text>
   <text name="best-label" fontSize="11" color="#335566">Best Wave: --</text>
+  <text name="playtime-label" fontSize="10" color="#334455">Play Time: --</text>
+  <text name="version-label" fontSize="9" color="#223344">v1.0 - Build 109</text>
 </container>
