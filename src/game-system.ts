@@ -240,6 +240,13 @@ function playSfx(type: string, vol = 0.3) {
 			o.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
 			g.gain.setValueAtTime(vol * 0.6, ctx.currentTime);
 			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+		} else if (type === 'nearmiss') {
+			// Quick sharp "zing" for near misses
+			o.type = 'triangle';
+			o.frequency.setValueAtTime(1800, ctx.currentTime);
+			o.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.15);
+			g.gain.setValueAtTime(vol * 0.5, ctx.currentTime);
+			g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
 		} else {
 			o.type = 'sine';
 			o.frequency.setValueAtTime(440, ctx.currentTime);
@@ -840,6 +847,20 @@ export class GameSystem extends createSystem({
 	goalSlowdownTimer = 0;
 	goalSlowdownActive = false;
 
+	// ── R9: Achievement unlock banner ──
+	achvBannerMesh: Mesh | null = null;
+	achvBannerMat: MeshBasicMaterial | null = null;
+	achvBannerQueue: number[] = [];
+	achvBannerTimer = 0;
+	achvBannerShowing = false;
+
+	// ── R9: Atmosphere particles ──
+	atmosEmbers: { mesh: Mesh; vel: Vector3; life: number; maxLife: number }[] = [];
+	atmosSpawnTimer = 0;
+
+	// ── R9: Per-skin music key ──
+	currentMusicSkin = '';
+
 	// ── Save data ──
 	saveData!: SaveData;
 
@@ -1001,6 +1022,9 @@ export class GameSystem extends createSystem({
 
 		// R8: Time Attack countdown ring
 		this.buildCountdownRing();
+
+		// R9: Achievement unlock banner
+		this.buildAchvBanner();
 
 		// R8: Apply saved arena skin
 		if (this.arenaSkin !== 'Neon Classic') {
@@ -1547,7 +1571,7 @@ export class GameSystem extends createSystem({
 		// R8: Arena skin selector
 		(d.getElementById('set-arena') as UIKit.Text)?.addEventListener('click', () => {
 			playSfx('click');
-			const allSkins = ['Neon Classic', 'Cyber Red', 'Ocean Deep', 'Void'];
+			const allSkins = ['Neon Classic', 'Cyber Red', 'Ocean Deep', 'Void', 'Solar Flare', 'Frozen'];
 			const available = allSkins.filter(s => this.isUnlocked('skin_' + s));
 			if (available.length === 0) return;
 			const idx = (available.indexOf(this.arenaSkin) + 1) % available.length;
@@ -1917,6 +1941,14 @@ export class GameSystem extends createSystem({
 		this.diveTimer = 0;
 		this.diveCooldown = 0;
 
+		// R9: Reset reaction time tracking
+		this.reactionTimes = [];
+		this.avgReactionTime = 0;
+		this.lastShotSpawnTime = 0;
+		this.sessionElapsed = 0;
+		this.goalSlowdownActive = false;
+		this.goalSlowdownTimer = 0;
+
 		// R4: Reset modifier
 		this.removeWaveModifier();
 
@@ -2207,6 +2239,18 @@ export class GameSystem extends createSystem({
 			// R5: Show tip
 			this.setTxt(this.gameOverDoc, 'go-tip', tip);
 
+			// R9: Reaction time and session time on game-over
+			if (this.reactionTimes.length > 0) {
+				const avg = Math.round(this.reactionTimes.reduce((a, b) => a + b, 0) / this.reactionTimes.length);
+				this.setTxt(this.gameOverDoc, 'go-reaction', avg + 'ms');
+			} else {
+				this.setTxt(this.gameOverDoc, 'go-reaction', '--');
+			}
+			const sessSecs = Math.floor(this.sessionElapsed);
+			const sessMin = Math.floor(sessSecs / 60);
+			const sessSS = String(sessSecs % 60).padStart(2, '0');
+			this.setTxt(this.gameOverDoc, 'go-session', sessMin + ':' + sessSS);
+
 			// R5: Set grade color
 			const gradeEl = this.gameOverDoc.getElementById('go-record') as UIKit.Text | undefined;
 			gradeEl?.setProperties({ color: gradeColor });
@@ -2424,6 +2468,7 @@ export class GameSystem extends createSystem({
 
 		this.shots.push(shot);
 		this.waveShotsLaunched++;
+		this.lastShotSpawnTime = performance.now(); // R9: Track spawn time for reaction tracking
 		playSfx('launch');
 
 		// R7: Training mode trajectory preview
@@ -2643,6 +2688,15 @@ export class GameSystem extends createSystem({
 
 		shot.blocked = true;
 		shot.alive = false;
+
+		// R9: Record reaction time (ms from shot spawn to save)
+		if (this.lastShotSpawnTime > 0) {
+			const reactionMs = performance.now() - this.lastShotSpawnTime;
+			if (reactionMs > 0 && reactionMs < 30000) {
+				this.reactionTimes.push(reactionMs);
+			}
+		}
+
 		// R6: Clean up split group if present
 		if (shot.mesh.userData.splitGroup) {
 			this.scene.remove(shot.mesh.userData.splitGroup);
@@ -2842,6 +2896,12 @@ export class GameSystem extends createSystem({
 		// R2: Goal popup
 		this.spawnScorePopup(shot.pos, '-1 LIFE', '#ff4444');
 
+		// R9: Post-goal dramatic slowdown
+		if (this.lives > 0) {
+			this.goalSlowdownActive = true;
+			this.goalSlowdownTimer = 0.4;
+		}
+
 		this.rumble('right', 0.8, 80);
 		this.rumble('left', 0.8, 80);
 
@@ -2903,6 +2963,8 @@ export class GameSystem extends createSystem({
 		playSfx('achieve');
 		// R5: Achievement unlock flash
 		this.triggerFlash(0xffcc00, 0.25, 0.4);
+		// R9: Queue banner notification
+		this.achvBannerQueue.push(idx);
 	}
 
 	// ── R4: Power-up system ──
@@ -3573,6 +3635,10 @@ export class GameSystem extends createSystem({
 
 		// R8: Countdown ring for Time Attack
 		this.updateCountdownRing(_time);
+		this.updateAchvBanner(dt);
+
+		// R9: Atmosphere particles
+		if (this.particlesOn) this.updateAtmosEmbers(dt);
 
 		// R7: Training paths
 		if (this.mode === 'training') this.updateTrainingPaths();
@@ -3784,6 +3850,13 @@ export class GameSystem extends createSystem({
 			if (s.pos.z >= GOAL_Z) {
 				// Check if within goal area
 				if (Math.abs(s.pos.x) <= GOAL_WIDTH / 2 && s.pos.y >= 0 && s.pos.y <= GOAL_HEIGHT) {
+					// R9: Near-miss detection — was close to gauntlet but still scored
+					const distL = s.pos.distanceTo(this.gauntletPosL);
+					const distR = s.pos.distanceTo(this.gauntletPosR);
+					const minDist = Math.min(distL, distR);
+					if (minDist < BLOCK_RADIUS * 2.5 && minDist > BLOCK_RADIUS) {
+						this.spawnNearMissSparks(s.pos);
+					}
 					this.onGoal(s);
 				} else {
 					// Missed the goal — wide/high
@@ -4336,6 +4409,8 @@ export class GameSystem extends createSystem({
 		if (feature === 'skin_Cyber Red') return achvCount >= 10;
 		if (feature === 'skin_Ocean Deep') return achvCount >= 20;
 		if (feature === 'skin_Void') return achvCount >= 25;
+		if (feature === 'skin_Solar Flare') return this.saveData.gamesPlayed >= 20;
+		if (feature === 'skin_Frozen') return this.saveData.bestScore >= 25000;
 		return true;
 	}
 
@@ -4420,9 +4495,22 @@ export class GameSystem extends createSystem({
 				ring: 0x8844ff,
 				accent: [0x8844ff, 0x6622dd, 0xaa66ff, 0x5500cc, 0x9955ff],
 			},
+			'Solar Flare': {
+				fog: 0x110800, ambient: 0x332211, floor: 0xffaa22,
+				beacon: [0xff8800, 0xffcc44, 0xff6600, 0xffdd66],
+				ring: 0xffaa22,
+				accent: [0xff8800, 0xffcc44, 0xff6600, 0xffdd66, 0xffbb33],
+			},
+			'Frozen': {
+				fog: 0x040811, ambient: 0x223344, floor: 0xaaddff,
+				beacon: [0x88ccff, 0xaaddff, 0x66aaee, 0xccf0ff],
+				ring: 0xaaddff,
+				accent: [0x88ccff, 0xaaddff, 0x66aaee, 0xccf0ff, 0x99ccee],
+			},
 		};
 		const s = skins[skin] || skins['Neon Classic'];
-		this.scene.fog = new FogExp2(s.fog, skin === 'Ocean Deep' ? 0.025 : (skin === 'Void' ? 0.03 : 0.02));
+		const fogDensity = skin === 'Ocean Deep' ? 0.025 : (skin === 'Void' ? 0.03 : (skin === 'Frozen' ? 0.018 : 0.02));
+		this.scene.fog = new FogExp2(s.fog, fogDensity);
 		this.scene.background = new Color(s.fog);
 		this.ambientLight.color.set(s.ambient);
 		// Floor grid
@@ -4568,5 +4656,178 @@ export class GameSystem extends createSystem({
 			this.scene.remove(ds.trail);
 		}
 		this.demoShots = [];
+	}
+
+	// ── R9: Achievement unlock banner ──
+	buildAchvBanner() {
+		const canvas = document.createElement('canvas');
+		canvas.width = 512;
+		canvas.height = 64;
+		const ctx = canvas.getContext('2d')!;
+		ctx.clearRect(0, 0, 512, 64);
+		const tex = new CanvasTexture(canvas);
+		const geo = new BoxGeometry(1.2, 0.15, 0.001);
+		const mat = new MeshBasicMaterial({
+			map: tex, transparent: true, opacity: 0,
+			depthWrite: false, side: DoubleSide,
+		});
+		this.achvBannerMesh = new Mesh(geo, mat);
+		this.achvBannerMat = mat;
+		this.achvBannerMesh.position.set(0, 2.3, -1.5);
+		this.achvBannerMesh.visible = false;
+		this.scene.add(this.achvBannerMesh);
+	}
+
+	updateAchvBanner(dt: number) {
+		if (!this.achvBannerMesh || !this.achvBannerMat) return;
+
+		if (this.achvBannerShowing) {
+			this.achvBannerTimer -= dt;
+			if (this.achvBannerTimer > 2.0) {
+				// Fade in (0.5s)
+				const fadeIn = 1 - (this.achvBannerTimer - 2.0) / 0.5;
+				this.achvBannerMat.opacity = Math.min(1, Math.max(0, fadeIn));
+			} else if (this.achvBannerTimer < 0.5) {
+				// Fade out
+				this.achvBannerMat.opacity = Math.max(0, this.achvBannerTimer / 0.5);
+			} else {
+				this.achvBannerMat.opacity = 1;
+			}
+			if (this.achvBannerTimer <= 0) {
+				this.achvBannerShowing = false;
+				this.achvBannerMesh.visible = false;
+				this.achvBannerMat.opacity = 0;
+			}
+		} else if (this.achvBannerQueue.length > 0) {
+			const idx = this.achvBannerQueue.shift()!;
+			const name = ACHV_NAMES[idx] || 'Unknown';
+			// Render text to canvas
+			const canvas = document.createElement('canvas');
+			canvas.width = 512;
+			canvas.height = 64;
+			const ctx = canvas.getContext('2d')!;
+			ctx.clearRect(0, 0, 512, 64);
+			ctx.fillStyle = 'rgba(0, 10, 20, 0.85)';
+			ctx.fillRect(0, 0, 512, 64);
+			ctx.strokeStyle = '#ffaa00';
+			ctx.lineWidth = 2;
+			ctx.strokeRect(1, 1, 510, 62);
+			ctx.fillStyle = '#ffcc00';
+			ctx.font = 'bold 16px sans-serif';
+			ctx.textAlign = 'center';
+			ctx.fillText('ACHIEVEMENT UNLOCKED', 256, 24);
+			ctx.fillStyle = '#ffffff';
+			ctx.font = '14px sans-serif';
+			ctx.fillText(name, 256, 48);
+			const tex = new CanvasTexture(canvas);
+			this.achvBannerMat.map = tex;
+			this.achvBannerMat.needsUpdate = true;
+			this.achvBannerMesh.visible = true;
+			this.achvBannerTimer = 2.5;
+			this.achvBannerShowing = true;
+		}
+	}
+
+	// ── R9: Near-miss spark effects ──
+	spawnNearMissSparks(pos: Vector3) {
+		if (!this.particlesOn) return;
+		// Spawn 8 orange sparks
+		for (let i = 0; i < 8; i++) {
+			const geo = new BoxGeometry(0.03, 0.03, 0.03);
+			const mat = new MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.9 });
+			const mesh = new Mesh(geo, mat);
+			mesh.position.copy(pos);
+			this.scene.add(mesh);
+			const vel = new Vector3(
+				(Math.random() - 0.5) * 6,
+				Math.random() * 4 + 1,
+				(Math.random() - 0.5) * 3,
+			);
+			this.particles.push({ mesh, vel, life: 0.6 });
+		}
+		// "CLOSE!" popup
+		this.spawnScorePopup(pos, 'CLOSE!', '#ff8800');
+		playSfx('nearmiss');
+	}
+
+	// ── R9: Arena atmosphere particles ──
+	spawnAtmosEmber() {
+		if (this.atmosEmbers.length >= 30) return;
+		const skinColors: Record<string, number[]> = {
+			'Neon Classic': [0x00ffcc, 0x00ccff, 0xcc44ff],
+			'Cyber Red': [0xff4444, 0xff6644, 0xff2222],
+			'Ocean Deep': [0x22ccaa, 0x00aacc, 0x44bbaa],
+			'Void': [0x8844ff, 0x6622dd, 0xaa66ff],
+			'Solar Flare': [0xffaa22, 0xff6600, 0xffcc44],
+			'Frozen': [0xaaddff, 0x88ccff, 0xccf0ff],
+		};
+		const palette = skinColors[this.arenaSkin] || skinColors['Neon Classic'];
+		const color = palette[Math.floor(Math.random() * palette.length)];
+		const geo = new SphereGeometry(0.025, 4, 3);
+		const mat = new MeshBasicMaterial({ color, transparent: true, opacity: 0.6 });
+		const mesh = new Mesh(geo, mat);
+		const x = (Math.random() - 0.5) * 20;
+		const y = 5 + Math.random() * 3;
+		const z = -15 + Math.random() * 14;
+		mesh.position.set(x, y, z);
+		this.scene.add(mesh);
+		const maxLife = 4 + Math.random() * 4;
+		this.atmosEmbers.push({
+			mesh,
+			vel: new Vector3(
+				(Math.random() - 0.5) * 0.3,
+				-0.3 - Math.random() * 0.5,
+				(Math.random() - 0.5) * 0.2,
+			),
+			life: maxLife,
+			maxLife,
+		});
+	}
+
+	updateAtmosEmbers(dt: number) {
+		// Spawn new embers periodically
+		this.atmosSpawnTimer += dt;
+		if (this.atmosSpawnTimer > 0.3) {
+			this.atmosSpawnTimer = 0;
+			this.spawnAtmosEmber();
+		}
+		// Update existing embers
+		for (let i = this.atmosEmbers.length - 1; i >= 0; i--) {
+			const e = this.atmosEmbers[i];
+			e.life -= dt;
+			if (e.life <= 0 || e.mesh.position.y < -1) {
+				this.scene.remove(e.mesh);
+				this.atmosEmbers.splice(i, 1);
+				continue;
+			}
+			e.mesh.position.x += e.vel.x * dt;
+			e.mesh.position.y += e.vel.y * dt;
+			e.mesh.position.z += e.vel.z * dt;
+			// Gentle sway
+			e.mesh.position.x += Math.sin(e.life * 2 + i) * 0.01;
+			const mat = e.mesh.material as MeshBasicMaterial;
+			// Fade out in last 1 second
+			if (e.life < 1) {
+				mat.opacity = e.life * 0.6;
+			}
+		}
+	}
+
+	clearAtmosEmbers() {
+		for (const e of this.atmosEmbers) {
+			this.scene.remove(e.mesh);
+		}
+		this.atmosEmbers = [];
+	}
+
+	// ── R9: Post-goal slowdown update ──
+	updateGoalSlowdown(dt: number): number {
+		if (!this.goalSlowdownActive) return 1.0;
+		this.goalSlowdownTimer -= dt;
+		if (this.goalSlowdownTimer <= 0) {
+			this.goalSlowdownActive = false;
+			return 1.0;
+		}
+		return 0.3; // 30% speed during slowdown
 	}
 }
